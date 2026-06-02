@@ -2222,7 +2222,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     <!-- ── 지역/주소 검색 ── -->
     <div class="field" id="geocode-field" style="position:relative;">
-      <label>지역 · 주소 검색</label>
+      <label>지역·주소 검색</label>
       <div class="row" style="align-items:center; gap:8px;">
         <input id="geo-input" placeholder="예: 서울특별시청, Tokyo, Eiffel Tower" style="flex:1" autocomplete="off" />
         <button id="geo-clear" title="지우기" style="flex:0 0 34px; height:34px; padding:0;">✕</button>
@@ -2257,17 +2257,32 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       <span id="wp-goto" style="display:contents;"></span>
       <button id="go-end" disabled>도착으로</button>
     </div>
+
+    <!-- ── 위치 표시 핀 (영상용·카메라 경로와 무관) ── -->
+    <div class="field" id="locpin-field" style="margin-top:8px;">
+      <label>위치 표시 핀 <span class="drag-hint">경로와 무관 · 표시만</span></label>
+      <div class="pin-row">
+        <div class="pin-src" id="pin-loc" draggable="true" data-target="loc" title="지도로 끌어다 놓기">
+          <svg class="pin-mini" id="pin-dot-loc" viewBox="0 0 28 38" width="16" height="22"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="#E2574C"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>
+          위치
+        </div>
+        <input id="locpin-color" type="color" list="palette" value="#E2574C" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
+        <button type="button" id="locpin-add" class="set pin-grab" title="현재 화면 중앙에 추가">＋ 추가</button>
+      </div>
+      <div id="locpin-list" style="margin-top:8px;"></div>
+    </div>
+
     <div class="field" style="margin-top:4px;">
       <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px;">
         <input id="pin-in-video" type="checkbox" style="width:auto; flex:0 0 auto;" />
-        녹화 영상에 핀 표시 (기본: 숨김)
+        녹화 영상에 핀 표시
       </label>
     </div>
 
     <div class="field" style="margin-top:6px;">
       <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
         <input id="route-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
-        경로 선 표시 (도로 경로, 이동 따라 그리기)
+        경로 선 표시
       </label>
     </div>
     <div class="field" id="route-opts" style="display:none;">
@@ -3282,29 +3297,83 @@ function initRecorder(map) {
     ctx.beginPath(); ctx.arc(14,14,6,0,Math.PI*2); ctx.fill();
     return ctx.getImageData(0,0,w,h);
   }
-  // 녹화용 핀 레이어 추가/갱신 (출발+도착+경유지 위치에 캔버스 심볼로 표시)
-  function showCapturePins() {
-    const feats = [];
-    if (startCam) feats.push({ type:'Feature', properties:{ img:'pin-img-start' }, geometry:{ type:'Point', coordinates: startCam.center } });
-    waypoints.forEach(w => { if (w.cam) feats.push({ type:'Feature', properties:{ img:'pin-img-wp' }, geometry:{ type:'Point', coordinates: w.cam.center } }); });
-    if (endCam)   feats.push({ type:'Feature', properties:{ img:'pin-img-end' }, geometry:{ type:'Point', coordinates: endCam.center } });
-    const data = { type:'FeatureCollection', features: feats };
+  // ── 녹화용 핀: 위치 목록 + 뾰족점 팝업 애니메이션 ──
+  // 핀은 icon-anchor:'bottom' 이라 icon-size 0→1 로 키우면 뾰족점이 고정된 채 위로 솟는다.
+  const easeOutBack = (t) => {
+    if (t <= 0) return 0; if (t >= 1) return 1;
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);   // 살짝 오버슈트 → "톡"
+  };
+  const POP_MS = 480;                 // 팝업 길이 (실시간 모드 기준)
+  function locImgId(color) { return 'pin-img-loc-' + String(color).replace('#','').toLowerCase(); }
 
+  let _capPins = [];                  // [{ key, coord:[lng,lat], img, start:(ms|frame)|null, loc?:bool }]
+  let _popLen  = POP_MS;              // 팝업 길이 (모드별 단위: ms 또는 프레임)
+  let _capSig  = '';                  // 직전 사이즈 시그니처 (변화 감지)
+  let _capChanged = false;            // 마지막 capPinFC 호출에서 사이즈가 바뀌었는지
+
+  function buildCapPinList() {
+    const arr = [];
+    if (startCam) arr.push({ key:'start', coord: startCam.center.slice(), img:'pin-img-start', start:null });
+    let si = 0;
+    waypoints.forEach(w => { if (w.cam) { arr.push({ key:'wp'+si, coord: w.cam.center.slice(), img:'pin-img-wp', start:null }); si++; } });
+    if (endCam) arr.push({ key:'end', coord: endCam.center.slice(), img:'pin-img-end', start:null });
+    locPins.forEach((p, i) => arr.push({ key:'loc'+i, coord: p.lngLat.slice(), img: locImgId(p.color), start:null, loc:true }));
+    return arr;
+  }
+  const pinSize = (p, now) => (p.start == null || now == null) ? 0 : easeOutBack((now - p.start) / _popLen);
+  function capPinFC(now) {
+    let sig = ''; const feats = [];
+    for (const p of _capPins) {
+      const s = pinSize(p, now);
+      sig += p.key + ':' + s.toFixed(3) + ';';
+      feats.push({ type:'Feature', properties:{ img:p.img, size:s }, geometry:{ type:'Point', coordinates:p.coord } });
+    }
+    _capChanged = (sig !== _capSig); _capSig = sig;
+    return { type:'FeatureCollection', features: feats };
+  }
+  // 핀 등장 트리거 (카메라 도착 시점 등). 한 번만 발동.
+  function triggerCapPin(key, now) {
+    const p = _capPins.find(x => x.key === key);
+    if (p && p.start == null) p.start = now;
+  }
+  // 위치 핀: 화면(뷰포트) 안에 들어오는 순간 등장
+  function checkLocPins(now) {
+    let b = null;
+    for (const p of _capPins) {
+      if (!p.loc || p.start != null) continue;
+      if (!b) b = map.getBounds();
+      if (b.contains(p.coord)) p.start = now;
+    }
+  }
+  function pushCapData(now) {
+    const src = map.getSource('capture-pins');
+    if (src) src.setData(capPinFC(now));
+  }
+
+  // 녹화용 핀 레이어 추가 (출발+경유지+도착+위치핀, 처음엔 size 0 = 숨김)
+  function showCapturePins() {
+    _capPins = buildCapPinList();
+    _capSig = '';
     // 이미지 등록 (색이 바뀔 수 있으니 매번 갱신)
-    const imgs = { 'pin-img-start': PIN.start.color, 'pin-img-end': PIN.end.color, 'pin-img-wp': WP_COLOR };
-    Object.entries(imgs).forEach(([id, color]) => {
+    const baseImgs = { 'pin-img-start': PIN.start.color, 'pin-img-end': PIN.end.color, 'pin-img-wp': WP_COLOR };
+    Object.entries(baseImgs).forEach(([id, color]) => {
       const img = pinImageData(color, 2);
-      if (map.hasImage(id)) map.updateImage(id, img);
-      else map.addImage(id, img, { pixelRatio: 2 });
+      if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
+    });
+    locPins.forEach(p => {
+      const id = locImgId(p.color), img = pinImageData(p.color, 2);
+      if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
     });
 
+    const data = capPinFC(null);   // 전부 size 0 (등장 전)
     if (!map.getSource('capture-pins')) {
       map.addSource('capture-pins', { type:'geojson', data });
       map.addLayer({
         id:'capture-pins-layer', type:'symbol', source:'capture-pins',
         layout:{
           'icon-image': ['get','img'],
-          'icon-size': 1,
+          'icon-size': ['get','size'],
           'icon-anchor': 'bottom',
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -3454,6 +3523,18 @@ function initRecorder(map) {
       if (_dragGhost) { _dragGhost.remove(); _dragGhost = null; }
     });
   });
+  // 위치 표시 핀 드래그 시작 (색은 locpin-color 입력값)
+  $('pin-loc').addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', 'loc');
+    e.dataTransfer.effectAllowed = 'copy';
+    _dragGhost = makeDragPin($('locpin-color').value || '#E2574C');
+    e.dataTransfer.setDragImage(_dragGhost, 16, 44);
+    $('drop-hint').classList.add('show');
+  });
+  $('pin-loc').addEventListener('dragend', () => {
+    $('drop-hint').classList.remove('show');
+    if (_dragGhost) { _dragGhost.remove(); _dragGhost = null; }
+  });
   const mapEl = $('map');
   mapEl.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
   mapEl.addEventListener('drop', (e) => {
@@ -3467,6 +3548,8 @@ function initRecorder(map) {
       setPoint(data, lngLat);
     } else if (data.startsWith('wp:')) {
       setWaypoint(+data.slice(3), lngLat);
+    } else if (data === 'loc') {
+      addLocPin(lngLat);
     }
   });
 
@@ -3596,6 +3679,45 @@ function initRecorder(map) {
     if (_dragGhost) { _dragGhost.remove(); _dragGhost = null; }
   });
 
+  /* ── 위치 표시 핀 (영상용, 카메라 경로와 무관) ── */
+  const locPins = [];               // [{ lngLat:[lng,lat], color, marker }]
+  function addLocPin(lngLat) {
+    const ll = (lngLat && lngLat.lng != null) ? [lngLat.lng, lngLat.lat] : [lngLat[0], lngLat[1]];
+    const color = $('locpin-color').value || '#E2574C';
+    const el = pinSVG(color); el.classList.add('loc-pin');
+    const m = new mapboxgl.Marker({ element: el, anchor:'bottom', draggable:true })
+      .setLngLat(ll).addTo(map);
+    const rec = { lngLat: ll, color, marker: m };
+    m.on('dragend', () => { const p = m.getLngLat(); rec.lngLat = [p.lng, p.lat]; bounceEl(el); renderLocPins(); });
+    locPins.push(rec);
+    bounceEl(el);
+    renderLocPins();
+  }
+  function renderLocPins() {
+    const box = $('locpin-list'); if (!box) return;
+    box.innerHTML = '';
+    locPins.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'wp-row';
+      row.innerHTML =
+        `<span class="wp-pin done" style="cursor:default; position:relative;">` +
+          `<svg viewBox="0 0 28 38" width="13" height="18"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="${p.color}"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>` +
+          ` ${i+1}</span>` +
+        `<span style="flex:1; display:flex; align-items:center; font-size:11px; color:var(--muted);">${p.lngLat[1].toFixed(4)}, ${p.lngLat[0].toFixed(4)}</span>` +
+        `<button type="button" class="wp-ctl wp-del" data-i="${i}" title="제거">✕</button>`;
+      box.appendChild(row);
+    });
+  }
+  $('locpin-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = +b.dataset.i;
+    if (b.classList.contains('wp-del')) {
+      const p = locPins[i]; if (p && p.marker) p.marker.remove();
+      locPins.splice(i, 1); renderLocPins();
+    }
+  });
+  $('locpin-add').addEventListener('click', () => addLocPin(map.getCenter()));
+
   // ── 포맷별 코덱 후보 ──
   const CODECS = {
     mp4:  ['video/mp4;codecs=avc1.64003E', 'video/mp4;codecs=avc1', 'video/mp4'],
@@ -3630,11 +3752,11 @@ function initRecorder(map) {
     if (!mime) { console.error('[REC] 지원 코덱 없음!'); setStatus('이 브라우저가 녹화 코덱을 지원하지 않습니다.', ''); busy=false; setUI(true); return; }
     if (typeof map.getCanvas().captureStream !== 'function') { console.error('[REC] captureStream 미지원!'); setStatus('이 브라우저가 captureStream을 지원하지 않습니다.', ''); busy=false; setUI(true); return; }
 
-    let pumping = false;
+    let pumping = false, pinRAF = 0;
     const showPins = $('pin-in-video').checked;
-    const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker)].filter(Boolean).map(m => m.getElement());
+    const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');     // DOM 마커는 녹화에 안 잡히므로 항상 숨김
-    if (showPins) showCapturePins();                      // 켜져 있으면 캔버스 핀으로 표시
+    if (showPins) { _popLen = POP_MS; showCapturePins(); }   // 켜져 있으면 캔버스 핀으로 표시 (등장 전 size 0)
     try {
       const stops = waypoints.filter(w => w.cam); // 지정된 경유지만
 
@@ -3682,6 +3804,13 @@ function initRecorder(map) {
       pumping = true;
       const pump = () => { if (pumping) { map.triggerRepaint(); requestAnimationFrame(pump); } };
       pump();
+      // 핀 팝업 애니메이션 드라이버 (매 프레임 사이즈 갱신 + 위치핀 뷰포트 진입 체크)
+      const drivePins = () => {
+        if (!pumping) { pinRAF = 0; return; }
+        if (showPins) { const now = performance.now(); checkLocPins(now); pushCapData(now); }
+        pinRAF = requestAnimationFrame(drivePins);
+      };
+      if (showPins) drivePins();
 
       const stream = map.getCanvas().captureStream(fps);
       console.log('[REC] captureStream OK, 트랙:', stream.getVideoTracks().length);
@@ -3707,7 +3836,8 @@ function initRecorder(map) {
       rec.start(500);   // 0.5초마다 청크 강제 수집 (빈 데이터 방지)
       console.log('[REC] 녹화 시작됨, state=', rec.state);
 
-      // 3) 앞 정지 (시작 화면 유지)
+      // 3) 앞 정지 (시작 화면 유지) — 출발 핀 팝업
+      if (showPins) triggerCapPin('start', performance.now());
       setStatus(`녹화 중 · 앞 정지 ${leadSec}s…`,'busy');
       await sleep(leadSec*1000);
 
@@ -3715,6 +3845,7 @@ function initRecorder(map) {
       for (let k = 0; k < stops.length; k++) {
         setStatus(`녹화 중 · 경유지 ${k+1} 줌…`,'busy');
         await animateTo(stops[k].cam);
+        if (showPins) triggerCapPin('wp'+k, performance.now());   // 도착 시 경유지 핀 팝업
         setStatus(`녹화 중 · 경유지 ${k+1} 홀드 ${stops[k].hold}s…`,'busy');
         await sleep(stops[k].hold*1000);
       }
@@ -3722,6 +3853,7 @@ function initRecorder(map) {
       // 5) 도착으로 줌
       setStatus('녹화 중 · 도착 줌…','busy');
       await animateTo(endCam);
+      if (showPins) triggerCapPin('end', performance.now());      // 도착 핀 팝업
 
       // 6) 뒤 정지 (도착 화면 유지)
       setStatus(`녹화 중 · 뒤 정지 ${tailSec}s…`,'busy');
@@ -3734,7 +3866,7 @@ function initRecorder(map) {
       setStatus(`저장 완료 ✓ (.${ext} 다운로드됨)`,'done');
     } catch (err) {
       pumping = false; console.error(err); setStatus('오류: ' + err.message, '');
-    } finally { busy = false; setUI(true); hideCapturePins(); pinEls.forEach(el => el.style.display = ''); }
+    } finally { busy = false; setUI(true); if (pinRAF) cancelAnimationFrame(pinRAF); hideCapturePins(); pinEls.forEach(el => el.style.display = ''); }
   }
   $('record').addEventListener('click', record);
 
@@ -3779,11 +3911,11 @@ function initRecorder(map) {
     const mbps = Math.max(2, parseFloat($('bitrate').value) || 16);
 
     const showPins = $('pin-in-video').checked;
-    const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker)].filter(Boolean).map(m => m.getElement());
+    const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');
-    if (showPins) showCapturePins();
+    if (showPins) { _popLen = Math.max(1, Math.round(POP_MS/1000*fps)); showCapturePins(); }   // 팝업 길이 = 프레임 수
 
-    let encoder, muxer;
+    let encoder, muxer, gFrame = 0;   // gFrame: 전역 프레임 카운터 (핀 등장 타이밍 기준)
     try {
       const stops = waypoints.filter(w => w.cam);
 
@@ -3875,12 +4007,20 @@ function initRecorder(map) {
         if (encoder.encodeQueueSize > 8) { while (encoder.encodeQueueSize > 4) await sleep(4); }
       };
 
-      // 정지 구간: 한 번 렌더 후 같은 화면을 n번 인코딩 (빠름)
+      // 한 프레임만 다시 렌더 (카메라 고정, 핀 사이즈 변화 반영용)
+      const renderOnce = () => new Promise((res) => { map.once('render', res); map.triggerRepaint(); });
+      // 정지 구간: 기본은 한 번 렌더 후 n번 인코딩(빠름). 핀이 팝업 중인 프레임만 다시 렌더.
       const holdEnc = async (cam, n, label) => {
         if (n <= 0) return;
         await renderFrame(cam);
         for (let i = 0; i < n; i++) {
+          if (showPins) {
+            checkLocPins(gFrame);
+            const fc = capPinFC(gFrame);                        // 사이즈 계산 + 변화 감지 (1회)
+            if (_capChanged) { map.getSource('capture-pins').setData(fc); await renderOnce(); }
+          }
           await encodeFrame(i === 0);
+          gFrame++;
           if (label && i % 5 === 0) setStatus(`${label} ${Math.round(i/fps*10)/10}s`,'busy');
         }
       };
@@ -3889,7 +4029,8 @@ function initRecorder(map) {
       const tailFrames = Math.round(tailSec * fps);
       const legFrames  = Math.round(durSec * fps);
 
-      // 앞 정지
+      // 앞 정지 — 출발 핀 팝업 (gFrame=0 부터)
+      if (showPins) triggerCapPin('start', gFrame);
       await holdEnc(startCam, leadFrames, '부드럽게 · 앞 정지');
 
       // 구간 보간
@@ -3897,12 +4038,15 @@ function initRecorder(map) {
         const { from, to, hold } = legs[L];
         for (let f = 0; f <= legFrames; f++) {
           const t = easeInOut(f / legFrames);
-          await renderFrame(interpCam(from, to, t));
+          if (showPins) { checkLocPins(gFrame); map.getSource('capture-pins').setData(capPinFC(gFrame)); }   // 핀 사이즈/등장 갱신
           if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L + t) / totalLegs));
+          await renderFrame(interpCam(from, to, t));            // setData 반영된 프레임 캡처
           await encodeFrame(f === 0);
+          gFrame++;
           if (f % 3 === 0) setStatus(`부드럽게 · 구간 ${L+1}/${legs.length} (${Math.round(f/legFrames*100)}%)`,'busy');
         }
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L+1)/totalLegs));
+        if (showPins) triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
         await holdEnc(to, Math.round((hold || 0) * fps), `부드럽게 · 경유지 ${L+1} 홀드`);
       }
 
@@ -3952,7 +4096,7 @@ function initRecorder(map) {
 
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video']
+    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-add','locpin-color']
       .forEach(id => { $(id).disabled = !enabled; });
     document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input').forEach(b => { b.disabled = !enabled; });
     if (enabled){
