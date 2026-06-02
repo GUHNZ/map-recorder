@@ -2067,7 +2067,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   /* 지도 위 핀 마커 */
   .map-pin{ width:28px; height:38px; cursor:grab; filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)); transition:opacity .15s; }
-  #map.pins-ghost .map-pin{ opacity:.45; }
+  #map.pins-ghost .map-pin:not(.loc-pin){ opacity:.45; }   /* 출발·도착·경유지 핀 */
+  #map.locpins-ghost .map-pin.loc-pin{ opacity:.45; }      /* 위치 표시 핀 */
   .map-color-row{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
   .seg-toggle{ display:flex; gap:0; margin-bottom:10px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .seg-btn{ flex:1; padding:8px 6px; font-size:12px; background:var(--panel-2); color:var(--muted); border:none; cursor:pointer; transition:background .12s, color .12s; }
@@ -2260,7 +2261,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     <!-- ── 위치 표시 핀 (영상용·카메라 경로와 무관) ── -->
     <div class="field" id="locpin-field" style="margin-top:8px;">
-      <label>위치 표시 핀 <span class="drag-hint">경로와 무관 · 표시만</span></label>
+      <label>위치 표시 핀 <span class="drag-hint">경로와 무관·표시만</span></label>
       <div class="pin-row">
         <div class="pin-src" id="pin-loc" draggable="true" data-target="loc" title="지도로 끌어다 놓기">
           <svg class="pin-mini" id="pin-dot-loc" viewBox="0 0 28 38" width="16" height="22"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="#E2574C"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>
@@ -2273,10 +2274,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     </div>
 
     <div class="field" style="margin-top:4px;">
-      <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px;">
-        <input id="pin-in-video" type="checkbox" style="width:auto; flex:0 0 auto;" />
-        녹화 영상에 핀 표시
-      </label>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; margin:0;">
+          <input id="pin-in-video" type="checkbox" style="width:auto; flex:0 0 auto;" />
+          출발·도착 핀 표시
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; margin:0;">
+          <input id="locpin-in-video" type="checkbox" style="width:auto; flex:0 0 auto;" />
+          위치 핀 표시
+        </label>
+      </div>
     </div>
 
     <div class="field" style="margin-top:6px;">
@@ -3312,13 +3319,17 @@ function initRecorder(map) {
   let _capSig  = '';                  // 직전 사이즈 시그니처 (변화 감지)
   let _capChanged = false;            // 마지막 capPinFC 호출에서 사이즈가 바뀌었는지
 
-  function buildCapPinList() {
+  function buildCapPinList(showPath, showLoc) {
     const arr = [];
-    if (startCam) arr.push({ key:'start', coord: startCam.center.slice(), img:'pin-img-start', start:null });
-    let si = 0;
-    waypoints.forEach(w => { if (w.cam) { arr.push({ key:'wp'+si, coord: w.cam.center.slice(), img:'pin-img-wp', start:null }); si++; } });
-    if (endCam) arr.push({ key:'end', coord: endCam.center.slice(), img:'pin-img-end', start:null });
-    locPins.forEach((p, i) => arr.push({ key:'loc'+i, coord: p.lngLat.slice(), img: locImgId(p.color), start:null, loc:true }));
+    if (showPath) {
+      if (startCam) arr.push({ key:'start', coord: startCam.center.slice(), img:'pin-img-start', start:null });
+      let si = 0;
+      waypoints.forEach(w => { if (w.cam) { arr.push({ key:'wp'+si, coord: w.cam.center.slice(), img:'pin-img-wp', start:null }); si++; } });
+      if (endCam) arr.push({ key:'end', coord: endCam.center.slice(), img:'pin-img-end', start:null });
+    }
+    if (showLoc) {
+      locPins.forEach((p, i) => arr.push({ key:'loc'+i, coord: p.lngLat.slice(), img: locImgId(p.color), start:null, loc:true }));
+    }
     return arr;
   }
   const pinSize = (p, now) => (p.start == null || now == null) ? 0 : easeOutBack((now - p.start) / _popLen);
@@ -3352,19 +3363,23 @@ function initRecorder(map) {
   }
 
   // 녹화용 핀 레이어 추가 (출발+경유지+도착+위치핀, 처음엔 size 0 = 숨김)
-  function showCapturePins() {
-    _capPins = buildCapPinList();
+  function showCapturePins(showPath, showLoc) {
+    _capPins = buildCapPinList(showPath, showLoc);
     _capSig = '';
-    // 이미지 등록 (색이 바뀔 수 있으니 매번 갱신)
-    const baseImgs = { 'pin-img-start': PIN.start.color, 'pin-img-end': PIN.end.color, 'pin-img-wp': WP_COLOR };
-    Object.entries(baseImgs).forEach(([id, color]) => {
-      const img = pinImageData(color, 2);
-      if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
-    });
-    locPins.forEach(p => {
-      const id = locImgId(p.color), img = pinImageData(p.color, 2);
-      if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
-    });
+    // 이미지 등록 (색이 바뀔 수 있으니 매번 갱신) — 표시하는 종류만
+    if (showPath) {
+      const baseImgs = { 'pin-img-start': PIN.start.color, 'pin-img-end': PIN.end.color, 'pin-img-wp': WP_COLOR };
+      Object.entries(baseImgs).forEach(([id, color]) => {
+        const img = pinImageData(color, 2);
+        if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
+      });
+    }
+    if (showLoc) {
+      locPins.forEach(p => {
+        const id = locImgId(p.color), img = pinImageData(p.color, 2);
+        if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
+      });
+    }
 
     const data = capPinFC(null);   // 전부 size 0 (등장 전)
     if (!map.getSource('capture-pins')) {
@@ -3493,9 +3508,11 @@ function initRecorder(map) {
 
   // "녹화 영상에 핀 표시" 꺼져 있으면 화면 핀을 반투명 (영상엔 안 나온다는 암시)
   function updatePinGhost() {
-    $('map').classList.toggle('pins-ghost', !$('pin-in-video').checked);
+    $('map').classList.toggle('pins-ghost',    !$('pin-in-video').checked);     // 출발·도착·경유지 핀
+    $('map').classList.toggle('locpins-ghost', !$('locpin-in-video').checked);  // 위치 표시 핀
   }
   $('pin-in-video').addEventListener('change', updatePinGhost);
+  $('locpin-in-video').addEventListener('change', updatePinGhost);
   updatePinGhost();   // 초기 상태 (기본 꺼짐 → 반투명)
 
   // 드래그용 핀 이미지 (라운드 박스 대신 핀 아이콘만 따라다니게)
@@ -3753,10 +3770,11 @@ function initRecorder(map) {
     if (typeof map.getCanvas().captureStream !== 'function') { console.error('[REC] captureStream 미지원!'); setStatus('이 브라우저가 captureStream을 지원하지 않습니다.', ''); busy=false; setUI(true); return; }
 
     let pumping = false, pinRAF = 0;
-    const showPins = $('pin-in-video').checked;
+    const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
+    const showPins = showPath || showLoc;
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');     // DOM 마커는 녹화에 안 잡히므로 항상 숨김
-    if (showPins) { _popLen = POP_MS; showCapturePins(); }   // 켜져 있으면 캔버스 핀으로 표시 (등장 전 size 0)
+    if (showPins) { _popLen = POP_MS; showCapturePins(showPath, showLoc); }   // 켜진 종류만 캔버스 핀으로 표시 (등장 전 size 0)
     try {
       const stops = waypoints.filter(w => w.cam); // 지정된 경유지만
 
@@ -3910,10 +3928,11 @@ function initRecorder(map) {
     const fps  = parseInt($('fps').value, 10);
     const mbps = Math.max(2, parseFloat($('bitrate').value) || 16);
 
-    const showPins = $('pin-in-video').checked;
+    const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
+    const showPins = showPath || showLoc;
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');
-    if (showPins) { _popLen = Math.max(1, Math.round(POP_MS/1000*fps)); showCapturePins(); }   // 팝업 길이 = 프레임 수
+    if (showPins) { _popLen = Math.max(1, Math.round(POP_MS/1000*fps)); showCapturePins(showPath, showLoc); }   // 팝업 길이 = 프레임 수
 
     let encoder, muxer, gFrame = 0;   // gFrame: 전역 프레임 카운터 (핀 등장 타이밍 기준)
     try {
@@ -4096,7 +4115,7 @@ function initRecorder(map) {
 
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-add','locpin-color']
+    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color']
       .forEach(id => { $(id).disabled = !enabled; });
     document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input').forEach(b => { b.disabled = !enabled; });
     if (enabled){
