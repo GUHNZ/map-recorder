@@ -2264,10 +2264,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       <label>위치 표시 핀 <span class="drag-hint">경로와 무관·표시만</span></label>
       <div class="pin-row">
         <div class="pin-src" id="pin-loc" draggable="true" data-target="loc" title="지도로 끌어다 놓기">
-          <svg class="pin-mini" id="pin-dot-loc" viewBox="0 0 28 38" width="16" height="22"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="#E2574C"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>
+          <svg class="pin-mini" id="pin-dot-loc" viewBox="0 0 28 38" width="16" height="22"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="#F17D38"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>
           위치
         </div>
-        <input id="locpin-color" type="color" list="palette" value="#E2574C" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
+        <input id="locpin-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
         <button type="button" id="locpin-add" class="set pin-grab" title="현재 화면 중앙에 추가">＋ 추가</button>
       </div>
       <div id="locpin-list" style="margin-top:8px;"></div>
@@ -3348,14 +3348,9 @@ function initRecorder(map) {
     const p = _capPins.find(x => x.key === key);
     if (p && p.start == null) p.start = now;
   }
-  // 위치 핀: 화면(뷰포트) 안에 들어오는 순간 등장
-  function checkLocPins(now) {
-    let b = null;
-    for (const p of _capPins) {
-      if (!p.loc || p.start != null) continue;
-      if (!b) b = map.getBounds();
-      if (b.contains(p.coord)) p.start = now;
-    }
+  // 위치 핀: 도착 컷(카메라가 도착 지점에 닿을 때) 일제히 등장
+  function triggerLocPins(now) {
+    for (const p of _capPins) { if (p.loc && p.start == null) p.start = now; }
   }
   function pushCapData(now) {
     const src = map.getSource('capture-pins');
@@ -3544,7 +3539,7 @@ function initRecorder(map) {
   $('pin-loc').addEventListener('dragstart', (e) => {
     e.dataTransfer.setData('text/plain', 'loc');
     e.dataTransfer.effectAllowed = 'copy';
-    _dragGhost = makeDragPin($('locpin-color').value || '#E2574C');
+    _dragGhost = makeDragPin($('locpin-color').value || '#F17D38');
     e.dataTransfer.setDragImage(_dragGhost, 16, 44);
     $('drop-hint').classList.add('show');
   });
@@ -3700,7 +3695,7 @@ function initRecorder(map) {
   const locPins = [];               // [{ lngLat:[lng,lat], color, marker }]
   function addLocPin(lngLat) {
     const ll = (lngLat && lngLat.lng != null) ? [lngLat.lng, lngLat.lat] : [lngLat[0], lngLat[1]];
-    const color = $('locpin-color').value || '#E2574C';
+    const color = $('locpin-color').value || '#F17D38';
     const el = pinSVG(color); el.classList.add('loc-pin');
     const m = new mapboxgl.Marker({ element: el, anchor:'bottom', draggable:true })
       .setLngLat(ll).addTo(map);
@@ -3825,7 +3820,7 @@ function initRecorder(map) {
       // 핀 팝업 애니메이션 드라이버 (매 프레임 사이즈 갱신 + 위치핀 뷰포트 진입 체크)
       const drivePins = () => {
         if (!pumping) { pinRAF = 0; return; }
-        if (showPins) { const now = performance.now(); checkLocPins(now); pushCapData(now); }
+        if (showPins) pushCapData(performance.now());
         pinRAF = requestAnimationFrame(drivePins);
       };
       if (showPins) drivePins();
@@ -3871,7 +3866,7 @@ function initRecorder(map) {
       // 5) 도착으로 줌
       setStatus('녹화 중 · 도착 줌…','busy');
       await animateTo(endCam);
-      if (showPins) triggerCapPin('end', performance.now());      // 도착 핀 팝업
+      if (showPins) { const now = performance.now(); triggerCapPin('end', now); triggerLocPins(now); }   // 도착 컷 — 도착 핀 + 위치 핀 일제히 팝업
 
       // 6) 뒤 정지 (도착 화면 유지)
       setStatus(`녹화 중 · 뒤 정지 ${tailSec}s…`,'busy');
@@ -4034,7 +4029,6 @@ function initRecorder(map) {
         await renderFrame(cam);
         for (let i = 0; i < n; i++) {
           if (showPins) {
-            checkLocPins(gFrame);
             const fc = capPinFC(gFrame);                        // 사이즈 계산 + 변화 감지 (1회)
             if (_capChanged) { map.getSource('capture-pins').setData(fc); await renderOnce(); }
           }
@@ -4057,7 +4051,7 @@ function initRecorder(map) {
         const { from, to, hold } = legs[L];
         for (let f = 0; f <= legFrames; f++) {
           const t = easeInOut(f / legFrames);
-          if (showPins) { checkLocPins(gFrame); map.getSource('capture-pins').setData(capPinFC(gFrame)); }   // 핀 사이즈/등장 갱신
+          if (showPins) map.getSource('capture-pins').setData(capPinFC(gFrame));   // 핀 사이즈 갱신
           if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L + t) / totalLegs));
           await renderFrame(interpCam(from, to, t));            // setData 반영된 프레임 캡처
           await encodeFrame(f === 0);
@@ -4065,7 +4059,10 @@ function initRecorder(map) {
           if (f % 3 === 0) setStatus(`부드럽게 · 구간 ${L+1}/${legs.length} (${Math.round(f/legFrames*100)}%)`,'busy');
         }
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L+1)/totalLegs));
-        if (showPins) triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
+        if (showPins) {
+          triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
+          if (L === stops.length) triggerLocPins(gFrame);               // 도착 컷 — 위치 핀 일제히 팝업
+        }
         await holdEnc(to, Math.round((hold || 0) * fps), `부드럽게 · 경유지 ${L+1} 홀드`);
       }
 
