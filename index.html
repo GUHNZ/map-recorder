@@ -2069,6 +2069,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   .map-pin{ width:28px; height:38px; cursor:grab; filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)); transition:opacity .15s; }
   #map.pins-ghost .map-pin:not(.loc-pin){ opacity:.45; }   /* 출발·도착·경유지 핀 */
   #map.locpins-ghost .map-pin.loc-pin{ opacity:.45; }      /* 위치 표시 핀 */
+  /* 위치 핀 라벨 (화면 위치에 따라 좌/우) */
+  .map-pin .loc-label{ position:absolute; top:12px; transform:translateY(-50%); white-space:nowrap; font-size:14px; font-weight:600; line-height:1; color:#000; pointer-events:none; text-shadow:0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
+  .map-pin.label-right .loc-label{ left:32px; text-align:left; }
+  .map-pin.label-left  .loc-label{ right:32px; text-align:right; }
+  .map-pin .loc-label:empty{ display:none; }
+  #draw-mode.active{ background:#2F62AF; color:#fff; border-color:#2F62AF; }
   .map-color-row{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
   .seg-toggle{ display:flex; gap:0; margin-bottom:10px; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .seg-btn{ flex:1; padding:8px 6px; font-size:12px; background:var(--panel-2); color:var(--muted); border:none; cursor:pointer; transition:background .12s, color .12s; }
@@ -2270,6 +2276,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         <input id="locpin-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
         <button type="button" id="locpin-add" class="set pin-grab" title="현재 화면 중앙에 추가">＋ 추가</button>
       </div>
+      <!-- 라벨 글꼴 (모든 위치 핀 공통) -->
+      <div class="row" style="align-items:center; gap:8px; margin-top:8px;">
+        <button type="button" id="locpin-font-btn" style="flex:1;" title="라벨 폰트 파일 업로드 (.ttf/.otf/.woff)">폰트 업로드</button>
+        <input id="locpin-font" type="file" accept=".ttf,.otf,.woff,.woff2,font/*" style="display:none;" />
+        <input id="locpin-text-size" type="number" min="8" max="72" step="1" value="16" style="flex:0 0 56px;" title="글자 크기(px)" />
+        <input id="locpin-text-color" type="color" list="palette" value="#000000" style="flex:0 0 38px; padding:2px; height:34px;" title="글자색" />
+      </div>
+      <div id="locpin-font-name" style="font-size:10px; color:var(--muted); margin-top:4px;">라벨 폰트: 기본</div>
       <div id="locpin-list" style="margin-top:8px;"></div>
     </div>
 
@@ -2310,6 +2324,31 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <input id="route-width" type="range" min="1" max="10" step="0.5" value="3" style="padding:0;" />
         </div>
       </div>
+    </div>
+
+    <!-- ── 직접 선 그리기 (수동 폴리라인, 카메라 경로와 무관) ── -->
+    <div class="field" style="margin-top:6px;">
+      <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
+        <input id="draw-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
+        직접 선 그리기
+      </label>
+    </div>
+    <div class="field" id="draw-opts" style="display:none;">
+      <div class="row" style="align-items:center; gap:8px;">
+        <button type="button" id="draw-mode" style="flex:1;">✏️ 그리기 모드</button>
+        <input id="draw-color" type="color" list="palette" value="#E2574C" style="flex:0 0 38px; padding:2px; height:34px;" title="선 색" />
+      </div>
+      <div class="row" style="align-items:center; gap:10px; margin-top:6px;">
+        <div class="field" style="margin:0; flex:1;">
+          <label style="margin-bottom:3px;">선 굵기 <span id="draw-w-val" style="float:right; color:var(--txt);">3</span></label>
+          <input id="draw-width" type="range" min="1" max="12" step="0.5" value="3" style="padding:0;" />
+        </div>
+      </div>
+      <div class="row" style="gap:8px; margin-top:6px;">
+        <button type="button" id="draw-undo" style="flex:1;">되돌리기</button>
+        <button type="button" id="draw-clear" style="flex:1;">전체 지우기</button>
+      </div>
+      <p class="hint" id="draw-hint" style="margin-top:6px;">그리기 모드 ON → 지도를 클릭해 점을 잇고, 더블클릭(또는 Enter)으로 한 선 완료. 카메라 이동에 맞춰 영상에서 그려집니다.</p>
     </div>
 
     <div class="divider"></div>
@@ -2442,6 +2481,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     <button id="record" class="rec">● 녹화 &amp; 저장</button>
     <button id="record-smooth" style="margin-top:6px; border-color:#3a5d8f;">✦ 부드럽게 녹화 (인코딩 시간 소요)</button>
     <button id="capture-png" style="margin-top:6px;">현재 지도 캡처</button>
+    <button id="export-svg" style="margin-top:6px;">색칠 영역 SVG 내보내기</button>
     <div id="status">대기 중</div>
     <p class="hint">줌: 슬라이더·마우스 휠로 미세조정 / +,−는 1단계씩</p>
   </div>
@@ -3254,6 +3294,90 @@ function initRecorder(map) {
   $('route-width').addEventListener('input', () => { $('route-w-val').textContent = $('route-width').value; applyRouteStyle(); });
   map.on('style.load', () => { if ($('route-on').checked) { addRouteLayer(); applyRouteStyle(); previewRoute(); } });
 
+  /* ── 직접 선 그리기 (수동 폴리라인, 카메라 경로와 무관) ── */
+  const drawnStrokes = [];   // 완료된 선들: [ [[lng,lat],...], ... ]
+  let drawCurrent = [];      // 현재 그리는 중인 선
+  let drawMode = false;
+  let _drawMouse = null;     // 러버밴드 미리보기용 커서 좌표
+
+  // 완료선(+ 진행중선/러버밴드) → FeatureCollection. t<1 이면 각 선을 부분만(녹화 reveal).
+  function drawFC(t, includeCurrent) {
+    const feats = [];
+    drawnStrokes.forEach(s => { const c = (t >= 1) ? s : partialPath(s, t); if (c && c.length >= 2) feats.push({ type:'Feature', geometry:{ type:'LineString', coordinates: c } }); });
+    if (includeCurrent && drawCurrent.length) {
+      const cur = _drawMouse ? drawCurrent.concat([_drawMouse]) : drawCurrent;
+      if (cur.length >= 2) feats.push({ type:'Feature', geometry:{ type:'LineString', coordinates: cur } });
+    }
+    return { type:'FeatureCollection', features: feats };
+  }
+  function addDrawLayer() {
+    if (map.getSource('draw-lines')) return;
+    map.addSource('draw-lines', { type:'geojson', data: drawFC(1, false) });
+    map.addLayer({
+      id:'draw-lines-layer', type:'line', source:'draw-lines',
+      layout:{ 'line-cap':'round', 'line-join':'round' },
+      paint:{ 'line-color': $('draw-color').value, 'line-width': parseFloat($('draw-width').value) }
+    });
+  }
+  function applyDrawStyle() {
+    if (!map.getLayer('draw-lines-layer')) return;
+    map.setPaintProperty('draw-lines-layer','line-color',$('draw-color').value);
+    map.setPaintProperty('draw-lines-layer','line-width',parseFloat($('draw-width').value));
+  }
+  function setDrawVisible(v) {
+    if (map.getLayer('draw-lines-layer')) map.setLayoutProperty('draw-lines-layer','visibility', v ? 'visible' : 'none');
+  }
+  function refreshDrawPreview() { const src = map.getSource('draw-lines'); if (src) src.setData(drawFC(1, true)); }  // 편집 미리보기(전체+진행중)
+  function setDrawData(t)       { const src = map.getSource('draw-lines'); if (src) src.setData(drawFC(t, false)); }  // 녹화 reveal(진행률 t)
+
+  function enterDrawMode() {
+    drawMode = true;
+    $('draw-mode').classList.add('active');
+    map.dragPan.disable(); map.doubleClickZoom.disable();
+    map.getCanvas().style.cursor = 'crosshair';
+    setStatus('그리기 모드: 클릭으로 점 잇기, 더블클릭·Enter로 완료','busy');
+  }
+  function exitDrawMode() {
+    if (drawCurrent.length >= 2) drawnStrokes.push(drawCurrent.slice());   // 진행 중 선 자동 완료
+    drawCurrent = []; _drawMouse = null; drawMode = false;
+    $('draw-mode').classList.remove('active');
+    map.dragPan.enable(); map.doubleClickZoom.enable();
+    map.getCanvas().style.cursor = '';
+    refreshDrawPreview(); setStatus('대기 중','');
+  }
+  function finishStroke() {
+    if (drawCurrent.length >= 2) drawnStrokes.push(drawCurrent.slice());
+    drawCurrent = []; _drawMouse = null; refreshDrawPreview();
+  }
+
+  $('draw-on').addEventListener('change', (e) => {
+    $('draw-opts').style.display = e.target.checked ? 'block' : 'none';
+    if (e.target.checked) { addDrawLayer(); applyDrawStyle(); setDrawVisible(true); refreshDrawPreview(); }
+    else { exitDrawMode(); setDrawVisible(false); }
+  });
+  $('draw-mode').addEventListener('click', () => { drawMode ? exitDrawMode() : enterDrawMode(); });
+  $('draw-color').addEventListener('input', applyDrawStyle);
+  $('draw-width').addEventListener('input', () => { $('draw-w-val').textContent = $('draw-width').value; applyDrawStyle(); });
+  $('draw-undo').addEventListener('click', () => { if (drawCurrent.length) drawCurrent.pop(); else drawnStrokes.pop(); refreshDrawPreview(); });
+  $('draw-clear').addEventListener('click', () => { drawnStrokes.length = 0; drawCurrent = []; _drawMouse = null; refreshDrawPreview(); });
+
+  // 지도 포인터: 그리기 모드일 때만 동작
+  map.on('click', (e) => {
+    if (!drawMode) return;
+    const p = [e.lngLat.lng, e.lngLat.lat];
+    const last = drawCurrent[drawCurrent.length - 1];
+    if (last) { const a = map.project(last), b = map.project(p); if (Math.hypot(a.x-b.x, a.y-b.y) < 8) return; }  // 더블클릭/중복 클릭 무시
+    drawCurrent.push(p); refreshDrawPreview();
+  });
+  map.on('dblclick', (e) => { if (!drawMode) return; if (e.preventDefault) e.preventDefault(); finishStroke(); });
+  map.on('mousemove', (e) => { if (!drawMode || !drawCurrent.length) return; _drawMouse = [e.lngLat.lng, e.lngLat.lat]; refreshDrawPreview(); });
+  window.addEventListener('keydown', (e) => {
+    if (!drawMode) return;
+    if (e.key === 'Enter') finishStroke();
+    else if (e.key === 'Escape') { drawCurrent = []; _drawMouse = null; refreshDrawPreview(); }
+  });
+  map.on('style.load', () => { if ($('draw-on').checked) { addDrawLayer(); applyDrawStyle(); setDrawVisible(true); refreshDrawPreview(); } });
+
   function applyFrame() {
     const guide = $('frame-guide'), val = $('frame').value;
     if (val === 'full') { guide.style.display = 'none'; readout(); return; }
@@ -3312,7 +3436,70 @@ function initRecorder(map) {
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);   // 살짝 오버슈트 → "톡"
   };
   const POP_MS = 480;                 // 팝업 길이 (실시간 모드 기준)
-  function locImgId(color) { return 'pin-img-loc-' + String(color).replace('#','').toLowerCase(); }
+
+  // 위치 핀 라벨 (사용자 업로드 폰트 가능)
+  let LOC_FONT_FAMILY = '';           // 업로드된 폰트명 ('' = 기본 sans-serif)
+  let _locFontFace = null;
+
+  // 라벨을 핀 이미지에 구워 만든다. 좌우 대칭 패딩으로 뾰족점이 항상 가로 중앙(anchor 'bottom') 에 오게 한다.
+  function locLabelImageData(rec, side, scale = 2) {
+    const text  = (rec.text || '').trim();
+    const fSize = Math.max(8, parseInt($('locpin-text-size').value, 10) || 16);
+    const tcol  = $('locpin-text-color').value || '#000000';
+    const fam   = LOC_FONT_FAMILY ? `'${LOC_FONT_FAMILY}'` : 'sans-serif';
+    const gap = 6, pinW = 28, pinH = 38;
+    const meas = document.createElement('canvas').getContext('2d');
+    meas.font = `600 ${fSize}px ${fam}`;
+    const textW = text ? Math.ceil(meas.measureText(text).width) : 0;
+    const sideW = textW ? (gap + textW) : 0;
+    const cw = pinW + 2 * sideW;                 // 좌우 대칭 → 뾰족점이 가로 중앙
+    const ch = Math.max(pinH, Math.ceil(fSize * 1.5));
+    const cv = document.createElement('canvas'); cv.width = cw * scale; cv.height = ch * scale;
+    const ctx = cv.getContext('2d'); ctx.scale(scale, scale);
+    const pinX = cw / 2 - pinW / 2;              // 핀 좌상단 x
+    const pinTop = ch - pinH;                    // 바닥 정렬 (뾰족점이 캔버스 맨 아래 중앙)
+    // 핀 본체
+    ctx.save(); ctx.translate(pinX, pinTop);
+    ctx.fillStyle = rec.color;
+    ctx.beginPath();
+    ctx.moveTo(14,0); ctx.bezierCurveTo(6.3,0,0,6.3,0,14); ctx.bezierCurveTo(0,24,14,38,14,38);
+    ctx.bezierCurveTo(14,38,28,24,28,14); ctx.bezierCurveTo(28,6.3,21.7,0,14,0); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(14,14,6,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    // 라벨
+    if (textW) {
+      ctx.font = `600 ${fSize}px ${fam}`;
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(2, fSize * 0.22);
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';   // 흰 외곽선 (가독성)
+      const ty = pinTop + 14;                       // 핀 머리 중앙 높이
+      let tx;
+      if (side === 'left') { ctx.textAlign = 'right'; tx = pinX - gap; }
+      else                 { ctx.textAlign = 'left';  tx = pinX + pinW + gap; }
+      ctx.strokeText(text, tx, ty);
+      ctx.fillStyle = tcol;
+      ctx.fillText(text, tx, ty);
+    }
+    return ctx.getImageData(0, 0, cv.width, cv.height);
+  }
+  // 도착 컷 화면 기준: 핀이 화면 왼쪽 절반이면 라벨도 왼쪽, 오른쪽 절반이면 오른쪽
+  function locSideFor(coord) {
+    const cx = (map.getContainer().clientWidth || map.getCanvas().clientWidth) / 2;
+    return map.project(coord).x < cx ? 'left' : 'right';
+  }
+  // 위치 핀 라벨 이미지를 (도착 화면 기준) 굽고 등록 — 프리로드에서 카메라가 도착에 있을 때 호출
+  function bakeLocLabels() {
+    for (const p of _capPins) {
+      if (!p.loc) continue;
+      const rec = locPins[p.locIndex]; if (!rec) continue;
+      const id = 'pin-img-loc-' + p.locIndex;
+      const img = locLabelImageData(rec, locSideFor(p.coord), 2);
+      if (map.hasImage(id)) map.removeImage(id);
+      map.addImage(id, img, { pixelRatio: 2 });
+      p.img = id;
+    }
+  }
 
   let _capPins = [];                  // [{ key, coord:[lng,lat], img, start:(ms|frame)|null, loc?:bool }]
   let _popLen  = POP_MS;              // 팝업 길이 (모드별 단위: ms 또는 프레임)
@@ -3328,7 +3515,7 @@ function initRecorder(map) {
       if (endCam) arr.push({ key:'end', coord: endCam.center.slice(), img:'pin-img-end', start:null });
     }
     if (showLoc) {
-      locPins.forEach((p, i) => arr.push({ key:'loc'+i, coord: p.lngLat.slice(), img: locImgId(p.color), start:null, loc:true }));
+      locPins.forEach((p, i) => arr.push({ key:'loc'+i, coord: p.lngLat.slice(), img:'pin-img-blank', start:null, loc:true, locIndex:i }));
     }
     return arr;
   }
@@ -3370,10 +3557,11 @@ function initRecorder(map) {
       });
     }
     if (showLoc) {
-      locPins.forEach(p => {
-        const id = locImgId(p.color), img = pinImageData(p.color, 2);
-        if (map.hasImage(id)) map.updateImage(id, img); else map.addImage(id, img, { pixelRatio: 2 });
-      });
+      // 라벨 이미지는 도착 컷 화면 위치에 따라 좌/우가 정해지므로 프리로드(bakeLocLabels)에서 굽는다.
+      if (!map.hasImage('pin-img-blank')) {
+        const c = document.createElement('canvas'); c.width = c.height = 1;
+        map.addImage('pin-img-blank', c.getContext('2d').getImageData(0, 0, 1, 1), { pixelRatio: 2 });
+      }
     }
 
     const data = capPinFC(null);   // 전부 size 0 (등장 전)
@@ -3396,6 +3584,9 @@ function initRecorder(map) {
   function hideCapturePins() {
     if (map.getLayer('capture-pins-layer')) map.removeLayer('capture-pins-layer');
     if (map.getSource('capture-pins')) map.removeSource('capture-pins');
+    for (const p of _capPins) {   // 라벨 이미지 정리 (다음 녹화에서 다시 굽도록)
+      if (p.loc && p.img && p.img.indexOf('pin-img-loc-') === 0 && map.hasImage(p.img)) { try { map.removeImage(p.img); } catch (_) {} }
+    }
   }
   // 재지정 피드백 헬퍼
   function flash(el) { if (!el) return; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
@@ -3692,16 +3883,52 @@ function initRecorder(map) {
   });
 
   /* ── 위치 표시 핀 (영상용, 카메라 경로와 무관) ── */
-  const locPins = [];               // [{ lngLat:[lng,lat], color, marker }]
+  const locPins = [];               // [{ lngLat:[lng,lat], color, text, marker }]
+  let _locMoveHooked = false;
+  const escAttr = (s) => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  function ensureLocMoveHook() { if (_locMoveHooked) return; _locMoveHooked = true; map.on('move', updateLocLabelSides); }
+
+  // 마커 DOM 라벨 스타일 (미리보기 — 업로드 폰트/크기/색 반영)
+  function applyLocLabelStyle(el) {
+    const lbl = el.querySelector('.loc-label'); if (!lbl) return;
+    lbl.style.fontFamily = LOC_FONT_FAMILY ? `'${LOC_FONT_FAMILY}', sans-serif` : '';
+    lbl.style.fontSize = (Math.max(8, parseInt($('locpin-text-size').value, 10) || 16)) + 'px';
+    lbl.style.color = $('locpin-text-color').value || '#000';
+  }
+  function updateLocLabelEl(i) {
+    const p = locPins[i]; if (!p || !p.marker) return;
+    const el = p.marker.getElement();
+    let lbl = el.querySelector('.loc-label');
+    if (!lbl) { lbl = document.createElement('div'); lbl.className = 'loc-label'; el.appendChild(lbl); }
+    lbl.textContent = p.text || '';
+    applyLocLabelStyle(el);
+  }
+  // 화면 좌/우 절반에 따라 라벨 위치 (왼쪽 절반→왼쪽, 오른쪽 절반→오른쪽)
+  function updateLocLabelSides() {
+    const cx = (map.getContainer().clientWidth || 0) / 2;
+    locPins.forEach(p => {
+      if (!p.marker) return;
+      const el = p.marker.getElement();
+      const left = map.project(p.lngLat).x < cx;
+      el.classList.toggle('label-left', left);
+      el.classList.toggle('label-right', !left);
+    });
+  }
+  function refreshAllLocLabels() { locPins.forEach((_, i) => updateLocLabelEl(i)); updateLocLabelSides(); }
+
   function addLocPin(lngLat) {
     const ll = (lngLat && lngLat.lng != null) ? [lngLat.lng, lngLat.lat] : [lngLat[0], lngLat[1]];
     const color = $('locpin-color').value || '#F17D38';
     const el = pinSVG(color); el.classList.add('loc-pin');
     const m = new mapboxgl.Marker({ element: el, anchor:'bottom', draggable:true })
       .setLngLat(ll).addTo(map);
-    const rec = { lngLat: ll, color, marker: m };
-    m.on('dragend', () => { const p = m.getLngLat(); rec.lngLat = [p.lng, p.lat]; bounceEl(el); renderLocPins(); });
+    const rec = { lngLat: ll, color, text: '', marker: m };
+    m.on('dragend', () => { const p = m.getLngLat(); rec.lngLat = [p.lng, p.lat]; bounceEl(el); updateLocLabelSides(); renderLocPins(); });
     locPins.push(rec);
+    ensureLocMoveHook();
+    updateLocLabelEl(locPins.length - 1);
+    updateLocLabelSides();
     bounceEl(el);
     renderLocPins();
   }
@@ -3715,20 +3942,44 @@ function initRecorder(map) {
         `<span class="wp-pin done" style="cursor:default; position:relative;">` +
           `<svg viewBox="0 0 28 38" width="13" height="18"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="${p.color}"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>` +
           ` ${i+1}</span>` +
-        `<span style="flex:1; display:flex; align-items:center; font-size:11px; color:var(--muted);">${p.lngLat[1].toFixed(4)}, ${p.lngLat[0].toFixed(4)}</span>` +
+        `<input type="text" class="loc-text" data-i="${i}" value="${escAttr(p.text || '')}" placeholder="라벨 (예: 서울) — 비우면 핀만" style="flex:1; font-size:11px;" title="${p.lngLat[1].toFixed(4)}, ${p.lngLat[0].toFixed(4)}" />` +
         `<button type="button" class="wp-ctl wp-del" data-i="${i}" title="제거">✕</button>`;
       box.appendChild(row);
     });
   }
+  $('locpin-list').addEventListener('input', (e) => {
+    const inp = e.target.closest('.loc-text'); if (!inp) return;
+    const i = +inp.dataset.i; if (!locPins[i]) return;
+    locPins[i].text = inp.value;
+    updateLocLabelEl(i);            // 마커 라벨만 갱신 (목록 재렌더 X → 포커스 유지)
+  });
   $('locpin-list').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const i = +b.dataset.i;
     if (b.classList.contains('wp-del')) {
       const p = locPins[i]; if (p && p.marker) p.marker.remove();
-      locPins.splice(i, 1); renderLocPins();
+      locPins.splice(i, 1); renderLocPins(); updateLocLabelSides();
     }
   });
   $('locpin-add').addEventListener('click', () => addLocPin(map.getCenter()));
+
+  // 라벨 폰트 업로드 / 크기·색
+  $('locpin-font-btn').addEventListener('click', () => $('locpin-font').click());
+  $('locpin-font').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      if (_locFontFace) { try { document.fonts.delete(_locFontFace); } catch (_) {} }
+      _locFontFace = new FontFace('UserPinFont', buf);
+      await _locFontFace.load();
+      document.fonts.add(_locFontFace);
+      LOC_FONT_FAMILY = 'UserPinFont';
+      $('locpin-font-name').textContent = '라벨 폰트: ' + file.name;
+      refreshAllLocLabels();
+    } catch (err) { $('locpin-font-name').textContent = '폰트 로드 실패: ' + err.message; }
+  });
+  $('locpin-text-size').addEventListener('input', refreshAllLocLabels);
+  $('locpin-text-color').addEventListener('input', refreshAllLocLabels);
 
   // ── 포맷별 코덱 후보 ──
   const CODECS = {
@@ -3765,6 +4016,7 @@ function initRecorder(map) {
     if (typeof map.getCanvas().captureStream !== 'function') { console.error('[REC] captureStream 미지원!'); setStatus('이 브라우저가 captureStream을 지원하지 않습니다.', ''); busy=false; setUI(true); return; }
 
     let pumping = false, pinRAF = 0;
+    if (drawMode) exitDrawMode();          // 녹화 전 그리기 모드 해제 (지도 이동 잠금 풀기)
     const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
     const showPins = showPath || showLoc;
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
@@ -3782,6 +4034,10 @@ function initRecorder(map) {
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
+      // 직접 그린 선 준비 (체크 + 그린 게 있으면): 카메라 이동에 맞춰 reveal
+      const drawLinesOn = $('draw-on').checked && drawnStrokes.length > 0;
+      if (drawLinesOn) { addDrawLayer(); applyDrawStyle(); setDrawVisible(true); setDrawData(0); }
+
       // 카메라 이동 단계 수 = 경유지 + 도착 (선은 전체 이동 시간에 걸쳐 비례 진행)
       const totalLegs = stops.length + 1;
       let legDone = 0;   // 완료된 카메라 이동 수
@@ -3790,11 +4046,12 @@ function initRecorder(map) {
         const opts = { ...cam, duration: durSec*1000, essential: true };
         const t0 = performance.now();
         let raf = 0;
-        if (drawRoute && pathCoords.length) {
+        if ((drawRoute && pathCoords.length) || drawLinesOn) {
           const grow = () => {
             const legT = Math.min(1, (performance.now() - t0) / (durSec*1000));
             const overall = (legDone + easeInOut(legT)) / totalLegs;   // 구간별 ease 적용
-            setRouteData(partialPath(pathCoords, overall));
+            if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, overall));
+            if (drawLinesOn) setDrawData(overall);
             if (legT < 1) raf = requestAnimationFrame(grow);
           };
           raf = requestAnimationFrame(grow);
@@ -3804,11 +4061,13 @@ function initRecorder(map) {
         if (raf) cancelAnimationFrame(raf);
         legDone++;
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legDone / totalLegs));
+        if (drawLinesOn) setDrawData(legDone / totalLegs);
       };
 
       // 1) 타일 프리로드 (모든 경유지·도착 워밍 후 출발로)
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
+      if (showLoc) bakeLocLabels();                 // 도착 화면 기준으로 위치 핀 라벨 좌/우 굽기
       for (const w of stops) { map.jumpTo(w.cam); await idle(); }
       map.jumpTo(startCam); await idle();
       await sleep(250);
@@ -3879,7 +4138,7 @@ function initRecorder(map) {
       setStatus(`저장 완료 ✓ (.${ext} 다운로드됨)`,'done');
     } catch (err) {
       pumping = false; console.error(err); setStatus('오류: ' + err.message, '');
-    } finally { busy = false; setUI(true); if (pinRAF) cancelAnimationFrame(pinRAF); hideCapturePins(); pinEls.forEach(el => el.style.display = ''); }
+    } finally { busy = false; setUI(true); if (pinRAF) cancelAnimationFrame(pinRAF); hideCapturePins(); refreshDrawPreview(); pinEls.forEach(el => el.style.display = ''); }
   }
   $('record').addEventListener('click', record);
 
@@ -3923,6 +4182,7 @@ function initRecorder(map) {
     const fps  = parseInt($('fps').value, 10);
     const mbps = Math.max(2, parseFloat($('bitrate').value) || 16);
 
+    if (drawMode) exitDrawMode();          // 녹화 전 그리기 모드 해제
     const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
     const showPins = showPath || showLoc;
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
@@ -3942,6 +4202,9 @@ function initRecorder(map) {
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
+      const drawLinesOn = $('draw-on').checked && drawnStrokes.length > 0;
+      if (drawLinesOn) { addDrawLayer(); applyDrawStyle(); setDrawVisible(true); setDrawData(0); }
+
       // 구간 시퀀스
       const legs = [];
       let prev = startCam;
@@ -3952,6 +4215,7 @@ function initRecorder(map) {
       // 프리로드
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
+      if (showLoc) bakeLocLabels();                 // 도착 화면 기준으로 위치 핀 라벨 좌/우 굽기
       for (const w of stops) { map.jumpTo(w.cam); await idle(); }
       await renderFrame(startCam);
       await sleep(200);
@@ -4053,12 +4317,14 @@ function initRecorder(map) {
           const t = easeInOut(f / legFrames);
           if (showPins) map.getSource('capture-pins').setData(capPinFC(gFrame));   // 핀 사이즈 갱신
           if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L + t) / totalLegs));
+          if (drawLinesOn) setDrawData((L + t) / totalLegs);
           await renderFrame(interpCam(from, to, t));            // setData 반영된 프레임 캡처
           await encodeFrame(f === 0);
           gFrame++;
           if (f % 3 === 0) setStatus(`부드럽게 · 구간 ${L+1}/${legs.length} (${Math.round(f/legFrames*100)}%)`,'busy');
         }
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L+1)/totalLegs));
+        if (drawLinesOn) setDrawData((L+1)/totalLegs);
         if (showPins) {
           triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
           if (L === stops.length) triggerLocPins(gFrame);               // 도착 컷 — 위치 핀 일제히 팝업
@@ -4088,7 +4354,7 @@ function initRecorder(map) {
       console.error(err); setStatus('오류: ' + err.message, '');
       try { if (encoder && encoder.state !== 'closed') encoder.close(); } catch (_) {}
     } finally {
-      busy = false; setUI(true); hideCapturePins(); pinEls.forEach(el => el.style.display = '');
+      busy = false; setUI(true); hideCapturePins(); refreshDrawPreview(); pinEls.forEach(el => el.style.display = '');
     }
   }
   $('record-smooth').addEventListener('click', recordSmooth);
@@ -4110,11 +4376,76 @@ function initRecorder(map) {
     map.triggerRepaint();
   });
 
+  // ── 색칠한 국가/시도 영역을 현재 화면 위치·크기 그대로 SVG로 내보내기 ──
+  // 화면에 렌더된 폴리곤(queryRenderedFeatures)을 map.project 로 화면 픽셀에 투영 → <path>.
+  // 벡터 타일은 타일 단위로 조각나므로, 외곽링/구멍 winding 을 통일하고 fill-rule:nonzero 로 조각을 안전하게 합친다.
+  $('export-svg').addEventListener('click', () => {
+    if (busy) return;
+    const run = () => {
+      try {
+        const W = Math.round(map.getCanvas().clientWidth), H = Math.round(map.getCanvas().clientHeight);
+        const r1 = (n) => Math.round(n * 10) / 10;
+        const projRing = (ring) => ring.map(c => map.project(c));
+        const signedArea = (pts) => { let a = 0; for (let i=0,n=pts.length;i<n;i++){ const p=pts[i],q=pts[(i+1)%n]; a += p.x*q.y - q.x*p.y; } return a; };
+        const emitRing = (pts, wantPos) => {
+          if (pts.length < 3) return '';
+          const seq = ((signedArea(pts) >= 0) === wantPos) ? pts : pts.slice().reverse();
+          let d = 'M';
+          for (let i=0;i<seq.length;i++) d += (i ? 'L' : '') + r1(seq[i].x) + ',' + r1(seq[i].y);
+          return d + 'Z';
+        };
+        const geomToPath = (geom) => {
+          const polys = geom && geom.type === 'Polygon' ? [geom.coordinates]
+                      : geom && geom.type === 'MultiPolygon' ? geom.coordinates : [];
+          let d = '';
+          for (const poly of polys) for (let r=0;r<poly.length;r++) d += emitRing(projRing(poly[r]), r === 0);  // r0=외곽, 나머지=구멍
+          return d;
+        };
+        const acc = [];   // { key, d, color, opacity }
+        const collect = (layerId, keyProp, colorOf, opacity) => {
+          if (!map.getLayer(layerId)) return;
+          const byKey = {};
+          for (const f of map.queryRenderedFeatures({ layers: [layerId] })) {
+            const key = f.properties && f.properties[keyProp];
+            const color = colorOf(key); if (!color) continue;       // 색칠 안 된 것 제외
+            const d = geomToPath(f.geometry); if (!d) continue;
+            (byKey[key] || (byKey[key] = { key, d: '', color, opacity })).d += d;
+          }
+          for (const k in byKey) acc.push(byKey[k]);
+        };
+        collect('country-color-fill', 'iso_3166_1_alpha_3',
+          (iso) => { const e = colored.find(x => x.iso === iso); return e && e.color; },
+          parseFloat($('country-opacity').value) || 1);
+        collect('sido-color-fill', 'name',
+          (nm) => { const e = sidoColored.find(x => x.name === nm); return e && e.color; },
+          parseFloat($('sido-opacity').value) || 1);
+
+        if (!acc.length) { setStatus('화면에 보이는 색칠 영역이 없습니다.', ''); return; }
+
+        const body = acc.map(p =>
+          `  <path d="${p.d}" fill="${p.color}" fill-opacity="${p.opacity}" fill-rule="nonzero" data-region="${escAttr(p.key)}"/>`
+        ).join('\n');
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${body}\n</svg>\n`;
+
+        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `colormap_regions_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'')}.svg`;
+        a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        setStatus(`SVG 저장 완료 ✓ (${acc.length}개 영역)`, 'done');
+      } catch (err) { console.error(err); setStatus('SVG 내보내기 오류: ' + err.message, ''); }
+    };
+    if (map.loaded() && !map.isMoving()) run();
+    else { setStatus('타일 로딩 대기 중…', 'busy'); map.once('idle', run); }
+  });
+
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color']
+    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-font-btn','locpin-font','locpin-text-size','locpin-text-color','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
       .forEach(id => { $(id).disabled = !enabled; });
-    document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input').forEach(b => { b.disabled = !enabled; });
+    document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input, .loc-text').forEach(b => { b.disabled = !enabled; });
     if (enabled){
       $('go-start').disabled = !startCam; $('go-end').disabled = !endCam;
     }
