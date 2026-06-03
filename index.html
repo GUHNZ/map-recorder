@@ -4145,9 +4145,9 @@ function initRecorder(map) {
       pumping = true;
       const pump = () => {
         if (!pumping) return;
+        requestAnimationFrame(pump);   // 다음 프레임 먼저 예약 → 아래에서 예외가 나도 펌프가 멈추지 않음
         map.triggerRepaint();
-        if (outCtx) outCtx.drawImage(cv0, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, fr.ow, fr.oh);
-        requestAnimationFrame(pump);
+        if (outCtx) { try { outCtx.drawImage(cv0, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, fr.ow, fr.oh); } catch (_) {} }
       };
       pump();
       // 핀 팝업 애니메이션 드라이버 (매 프레임 사이즈 갱신 + 위치핀 뷰포트 진입 체크)
@@ -4167,7 +4167,7 @@ function initRecorder(map) {
       const done = new Promise((resolve) => {
         rec.onstop = () => {
           console.log('[REC] onstop 진입, 청크:', chunks.length, '총 크기:', chunks.reduce((s,c)=>s+c.size,0));
-          if (!chunks.length) { setStatus('녹화 데이터가 비었습니다 → 크롬 하드웨어 가속을 켜세요 (chrome://settings/system 후 재시작)', ''); resolve(); return; }
+          if (!chunks.length) { setStatus('녹화 데이터가 비었습니다 — 녹화 중 다른 탭/창으로 이동하면 캡처가 멈춥니다. 계속되면 "✦ 부드럽게 녹화"를 쓰거나, 크롬 하드웨어 가속을 켜세요 (chrome://settings/system 후 재시작).', ''); resolve(); return; }
           const blob = new Blob(chunks, { type: mime.split(';')[0] });
           const url = URL.createObjectURL(blob);
           const name = `colormap_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'')}.${ext}`;
@@ -4207,6 +4207,7 @@ function initRecorder(map) {
 
       pumping = false;
       console.log('[REC] 정지 직전, 수집된 청크:', chunks.length);
+      try { if (rec.state === 'recording') rec.requestData(); } catch (_) {}   // 버퍼된 마지막 데이터 flush
       rec.stop(); await done;
       console.log('[REC] 완료');
       setStatus(`저장 완료 ✓ (.${ext} 다운로드됨)`,'done');
