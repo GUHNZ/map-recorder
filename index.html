@@ -2286,14 +2286,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         <input id="locpin-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
         <button type="button" id="locpin-add" class="set pin-grab" title="현재 화면 중앙에 추가">＋ 추가</button>
       </div>
-      <!-- 라벨 글꼴 (모든 위치 핀 공통) -->
-      <div class="row" style="align-items:center; gap:8px; margin-top:8px;">
-        <button type="button" id="locpin-font-btn" style="flex:1;" title="라벨 폰트 파일 업로드 (.ttf/.otf/.woff)">폰트 업로드</button>
-        <input id="locpin-font" type="file" accept=".ttf,.otf,.woff,.woff2,font/*" style="display:none;" />
-        <input id="locpin-text-size" type="number" min="8" max="72" step="1" value="16" style="flex:0 0 56px;" title="글자 크기(px)" />
-        <input id="locpin-text-color" type="color" list="palette" value="#000000" style="flex:0 0 38px; padding:2px; height:34px;" title="글자색" />
-      </div>
-      <div id="locpin-font-name" style="font-size:10px; color:var(--muted); margin-top:4px;">라벨 폰트: 기본</div>
       <div id="locpin-list" style="margin-top:8px;"></div>
     </div>
 
@@ -2429,6 +2421,18 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           </div>
         </div>
 
+        <div class="row" style="margin-top:8px; align-items:flex-end;">
+          <div class="field" style="margin:0; flex:1;">
+            <label>위치 핀 글자 크기</label>
+            <input id="locpin-text-size" type="number" min="8" max="120" step="1" value="30" />
+          </div>
+          <div class="field" style="margin:0; flex:0 0 auto;">
+            <label>글자색</label>
+            <input id="locpin-text-color" type="color" list="palette" value="#0F3564" style="height:34px; padding:2px;" />
+          </div>
+        </div>
+        <div id="locpin-font-name" style="font-size:10px; color:var(--muted); margin-top:4px;">라벨 폰트: 기본</div>
+
         <div id="map-color-section" style="margin-top:10px; border-top:1px solid var(--line); padding-top:10px;">
           <div class="map-color-row">
             <label class="mc-label">육지색</label>
@@ -2441,7 +2445,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <div class="map-color-row">
             <label class="mc-toggle"><input type="checkbox" id="river-on" checked /> 강 표시</label>
           </div>
-          <p class="hint" style="margin:4px 0 0;">현재 스타일의 육지·바다 색을 바로 바꿉니다. 강 표시를 끄면 하천 선이 숨겨집니다.</p>
         </div>
 
         <div id="boundary-section" style="margin-top:10px; border-top:1px solid var(--line); padding-top:10px;">
@@ -3990,21 +3993,7 @@ function initRecorder(map) {
   }
   loadEmbeddedLabelFont();   // 시작 시 내장 폰트 자동 적용
 
-  // 폰트 업로드 (이번 세션에서만 덮어쓰기) / 크기·색
-  $('locpin-font-btn').addEventListener('click', () => $('locpin-font').click());
-  $('locpin-font').addEventListener('change', async (e) => {
-    const file = e.target.files && e.target.files[0]; if (!file) return;
-    try {
-      const buf = await file.arrayBuffer();
-      if (_locFontFace) { try { document.fonts.delete(_locFontFace); } catch (_) {} }
-      _locFontFace = new FontFace('UserPinFont', buf);
-      await _locFontFace.load();
-      document.fonts.add(_locFontFace);
-      LOC_FONT_FAMILY = 'UserPinFont';
-      $('locpin-font-name').textContent = '라벨 폰트: ' + file.name;
-      refreshAllLocLabels();
-    } catch (err) { $('locpin-font-name').textContent = '폰트 로드 실패: ' + err.message; }
-  });
+  // 라벨 크기·색 (폰트는 내장 RixSinGo Pro ExtraBold 사용)
   $('locpin-text-size').addEventListener('input', refreshAllLocLabels);
   $('locpin-text-color').addEventListener('input', refreshAllLocLabels);
 
@@ -4470,7 +4459,7 @@ function initRecorder(map) {
 
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-font-btn','locpin-font','locpin-text-size','locpin-text-color','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
+    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-text-size','locpin-text-color','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
       .forEach(id => { $(id).disabled = !enabled; });
     document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input, .loc-text').forEach(b => { b.disabled = !enabled; });
     if (enabled){
