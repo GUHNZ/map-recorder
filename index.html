@@ -2283,8 +2283,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <svg class="pin-mini" id="pin-dot-loc" viewBox="0 0 28 38" width="16" height="22"><path d="M14 0C6.3 0 0 6.3 0 14c0 10 14 24 14 24s14-14 14-24C28 6.3 21.7 0 14 0z" fill="#F17D38"/><circle cx="14" cy="14" r="6" fill="rgba(255,255,255,.9)"/></svg>
           위치
         </div>
-        <input id="locpin-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
         <button type="button" id="locpin-add" class="set pin-grab" title="현재 화면 중앙에 추가">＋ 추가</button>
+        <input id="locpin-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="핀 색" />
       </div>
       <div id="locpin-list" style="margin-top:8px;"></div>
     </div>
@@ -2358,54 +2358,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     <details class="adv">
       <summary>세부 설정</summary>
       <div class="pad">
-        <div class="row">
-          <div class="field"><label>줌 시간 (초)</label>
-            <div class="stepper">
-              <button type="button" class="step" data-t="duration" data-d="-1">−</button>
-              <input id="duration" type="number" min="0.5" step="0.5" value="4" />
-              <button type="button" class="step" data-t="duration" data-d="1">＋</button>
-            </div>
-          </div>
-          <div class="field"><label>FPS</label><select id="fps"><option>30</option><option>60</option></select></div>
-        </div>
-        <div class="row">
-          <div class="field"><label>앞 정지 (초)</label>
-            <div class="stepper">
-              <button type="button" class="step" data-t="lead" data-d="-1">−</button>
-              <input id="lead" type="number" min="0" step="0.5" value="0.5" />
-              <button type="button" class="step" data-t="lead" data-d="1">＋</button>
-            </div>
-          </div>
-          <div class="field"><label>뒤 정지 (초)</label>
-            <div class="stepper">
-              <button type="button" class="step" data-t="tail" data-d="-1">−</button>
-              <input id="tail" type="number" min="0" step="0.5" value="3" />
-              <button type="button" class="step" data-t="tail" data-d="1">＋</button>
-            </div>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field"><label>이동 방식</label><select id="mode"><option value="fly">비행 (flyTo·곡선)</option><option value="ease">직선 (easeTo)</option></select></div>
-          <div class="field"><label>화질 (Mbps)</label>
-            <div class="stepper">
-              <button type="button" class="step" data-t="bitrate" data-d="-1">−</button>
-              <input id="bitrate" type="number" min="2" step="1" value="16" />
-              <button type="button" class="step" data-t="bitrate" data-d="1">＋</button>
-            </div>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field"><label>포맷</label><select id="format"></select></div>
-          <div class="field">
-            <label>캡처 영역</label>
-            <select id="frame"><option value="full">현재 창 전체</option><option value="1920x1080">1920 × 1080</option><option value="1280x720">1280 × 720</option></select>
-          </div>
-        </div>
-        <div id="resout">실제 녹화 해상도: —</div>
-        <div class="field" style="margin-top:8px;">
-          <label>타일 전환 부드럽게 <span id="tile-fade-val" style="float:right; color:var(--txt);">600ms</span></label>
-          <input id="tile-fade" type="range" min="0" max="2000" step="100" value="600" style="padding:0;" />
-        </div>
         <div class="row" style="margin-top:8px;">
           <div class="field" style="margin:0;">
             <label>출발 핀</label>
@@ -2425,6 +2377,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <div class="field" style="margin:0; flex:1;">
             <label>위치 핀 글자 크기</label>
             <input id="locpin-text-size" type="number" min="8" max="120" step="1" value="30" />
+          </div>
+          <div class="field" style="margin:0; flex:1;">
+            <label>등장 시점</label>
+            <select id="locpin-timing">
+              <option value="last">마지막 컷</option>
+              <option value="first">첫 컷</option>
+            </select>
           </div>
           <div class="field" style="margin:0; flex:0 0 auto;">
             <label>글자색</label>
@@ -2487,6 +2446,54 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         <div id="wp-hold-section" style="margin-top:10px; border-top:1px solid var(--line); padding-top:10px; display:none;">
           <label style="display:block; margin-bottom:6px;">경유지 정지 시간</label>
           <div id="wp-hold-list"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>줌 시간 (초)</label>
+            <div class="stepper">
+              <button type="button" class="step" data-t="duration" data-d="-1">−</button>
+              <input id="duration" type="number" min="0.5" step="0.5" value="4" />
+              <button type="button" class="step" data-t="duration" data-d="1">＋</button>
+            </div>
+          </div>
+          <div class="field"><label>FPS</label><select id="fps"><option>30</option><option>60</option></select></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>앞 정지 (초)</label>
+            <div class="stepper">
+              <button type="button" class="step" data-t="lead" data-d="-1">−</button>
+              <input id="lead" type="number" min="0" step="0.5" value="0.5" />
+              <button type="button" class="step" data-t="lead" data-d="1">＋</button>
+            </div>
+          </div>
+          <div class="field"><label>뒤 정지 (초)</label>
+            <div class="stepper">
+              <button type="button" class="step" data-t="tail" data-d="-1">−</button>
+              <input id="tail" type="number" min="0" step="0.5" value="3" />
+              <button type="button" class="step" data-t="tail" data-d="1">＋</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>이동 방식</label><select id="mode"><option value="fly">비행 (flyTo·곡선)</option><option value="ease">직선 (easeTo)</option></select></div>
+          <div class="field"><label>화질 (Mbps)</label>
+            <div class="stepper">
+              <button type="button" class="step" data-t="bitrate" data-d="-1">−</button>
+              <input id="bitrate" type="number" min="2" step="1" value="16" />
+              <button type="button" class="step" data-t="bitrate" data-d="1">＋</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field"><label>포맷</label><select id="format"></select></div>
+          <div class="field">
+            <label>캡처 영역</label>
+            <select id="frame"><option value="full">현재 창 전체</option><option value="1920x1080">1920 × 1080</option><option value="1280x720">1280 × 720</option></select>
+          </div>
+        </div>
+        <div id="resout">실제 녹화 해상도: —</div>
+        <div class="field" style="margin-top:8px;">
+          <label>타일 전환 부드럽게 <span id="tile-fade-val" style="float:right; color:var(--txt);">600ms</span></label>
+          <input id="tile-fade" type="range" min="0" max="2000" step="100" value="600" style="padding:0;" />
         </div>
       </div>
     </details>
@@ -4035,6 +4042,7 @@ function initRecorder(map) {
     if (drawMode) exitDrawMode();          // 녹화 전 그리기 모드 해제 (지도 이동 잠금 풀기)
     const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
     const showPins = showPath || showLoc;
+    const locFirst = $('locpin-timing').value === 'first';   // 위치 핀 등장: 첫 컷 vs 마지막 컷
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');     // DOM 마커는 녹화에 안 잡히므로 항상 숨김
     if (showPins) { _popLen = POP_MS; showCapturePins(showPath, showLoc); }   // 켜진 종류만 캔버스 핀으로 표시 (등장 전 size 0)
@@ -4083,9 +4091,10 @@ function initRecorder(map) {
       // 1) 타일 프리로드 (모든 경유지·도착 워밍 후 출발로)
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
-      if (showLoc) bakeLocLabels();                 // 도착 화면 기준으로 위치 핀 라벨 좌/우 굽기
+      if (showLoc && !locFirst) bakeLocLabels();    // 마지막 컷: 도착 화면 기준으로 라벨 좌/우 굽기
       for (const w of stops) { map.jumpTo(w.cam); await idle(); }
       map.jumpTo(startCam); await idle();
+      if (showLoc && locFirst) bakeLocLabels();     // 첫 컷: 출발 화면 기준으로 라벨 좌/우 굽기
       await sleep(250);
 
       // 2) 정지 구간에도 프레임이 빠지지 않도록 캔버스 강제 리페인트 펌프
@@ -4125,7 +4134,7 @@ function initRecorder(map) {
       console.log('[REC] 녹화 시작됨, state=', rec.state);
 
       // 3) 앞 정지 (시작 화면 유지) — 출발 핀 팝업
-      if (showPins) triggerCapPin('start', performance.now());
+      if (showPins) { const now = performance.now(); triggerCapPin('start', now); if (locFirst) triggerLocPins(now); }   // 첫 컷이면 위치 핀도 앞 정지에 등장
       setStatus(`녹화 중 · 앞 정지 ${leadSec}s…`,'busy');
       await sleep(leadSec*1000);
 
@@ -4141,7 +4150,7 @@ function initRecorder(map) {
       // 5) 도착으로 줌
       setStatus('녹화 중 · 도착 줌…','busy');
       await animateTo(endCam);
-      if (showPins) { const now = performance.now(); triggerCapPin('end', now); triggerLocPins(now); }   // 도착 컷 — 도착 핀 + 위치 핀 일제히 팝업
+      if (showPins) { const now = performance.now(); triggerCapPin('end', now); if (!locFirst) triggerLocPins(now); }   // 마지막 컷이면 위치 핀이 도착 컷에 등장
 
       // 6) 뒤 정지 (도착 화면 유지)
       setStatus(`녹화 중 · 뒤 정지 ${tailSec}s…`,'busy');
@@ -4201,6 +4210,7 @@ function initRecorder(map) {
     if (drawMode) exitDrawMode();          // 녹화 전 그리기 모드 해제
     const showPath = $('pin-in-video').checked, showLoc = $('locpin-in-video').checked;
     const showPins = showPath || showLoc;
+    const locFirst = $('locpin-timing').value === 'first';   // 위치 핀 등장: 첫 컷 vs 마지막 컷
     const pinEls = [PIN.start.marker, PIN.end.marker, ...waypoints.map(w=>w.marker), ...locPins.map(p=>p.marker)].filter(Boolean).map(m => m.getElement());
     pinEls.forEach(el => el.style.display = 'none');
     if (showPins) { _popLen = Math.max(1, Math.round(POP_MS/1000*fps)); showCapturePins(showPath, showLoc); }   // 팝업 길이 = 프레임 수
@@ -4231,9 +4241,10 @@ function initRecorder(map) {
       // 프리로드
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
-      if (showLoc) bakeLocLabels();                 // 도착 화면 기준으로 위치 핀 라벨 좌/우 굽기
+      if (showLoc && !locFirst) bakeLocLabels();    // 마지막 컷: 도착 화면 기준으로 라벨 좌/우 굽기
       for (const w of stops) { map.jumpTo(w.cam); await idle(); }
       await renderFrame(startCam);
+      if (showLoc && locFirst) bakeLocLabels();     // 첫 컷: 출발 화면 기준으로 라벨 좌/우 굽기
       await sleep(200);
 
       // 캔버스 크기 (짝수로 보정 — H.264 요구사항)
@@ -4323,7 +4334,7 @@ function initRecorder(map) {
       const legFrames  = Math.round(durSec * fps);
 
       // 앞 정지 — 출발 핀 팝업 (gFrame=0 부터)
-      if (showPins) triggerCapPin('start', gFrame);
+      if (showPins) { triggerCapPin('start', gFrame); if (locFirst) triggerLocPins(gFrame); }   // 첫 컷이면 위치 핀도 앞 정지에 등장
       await holdEnc(startCam, leadFrames, '부드럽게 · 앞 정지');
 
       // 구간 보간
@@ -4343,7 +4354,7 @@ function initRecorder(map) {
         if (drawLinesOn) setDrawData((L+1)/totalLegs);
         if (showPins) {
           triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
-          if (L === stops.length) triggerLocPins(gFrame);               // 도착 컷 — 위치 핀 일제히 팝업
+          if (L === stops.length && !locFirst) triggerLocPins(gFrame);  // 마지막 컷이면 위치 핀이 도착 컷에 등장
         }
         await holdEnc(to, Math.round((hold || 0) * fps), `부드럽게 · 경유지 ${L+1} 홀드`);
       }
@@ -4459,7 +4470,7 @@ function initRecorder(map) {
 
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-text-size','locpin-text-color','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
+    ['set-start','set-end','go-start','go-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-text-size','locpin-text-color','locpin-timing','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
       .forEach(id => { $(id).disabled = !enabled; });
     document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input, .loc-text').forEach(b => { b.disabled = !enabled; });
     if (enabled){
