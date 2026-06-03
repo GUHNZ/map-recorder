@@ -2000,11 +2000,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   .chip input.sw{
     -webkit-appearance:none; appearance:none;
     width:18px; height:18px; flex:0 0 18px; padding:0; margin:0;
-    border:1px solid rgba(255,255,255,.25); border-radius:4px; cursor:pointer; background:transparent;
+    border:1px solid rgba(255,255,255,.25); border-radius:50%; cursor:pointer; background:transparent;
   }
   .chip input.sw::-webkit-color-swatch-wrapper{ padding:0; }
-  .chip input.sw::-webkit-color-swatch{ border:none; border-radius:3px; }
-  .chip input.sw::-moz-color-swatch{ border:none; border-radius:3px; }
+  .chip input.sw::-webkit-color-swatch{ border:none; border-radius:50%; }
+  .chip input.sw::-moz-color-swatch{ border:none; border-radius:50%; }
   .chip .nm{ flex:1; }
   .chip .x{ cursor:pointer; color:var(--muted); font-size:14px; line-height:1; padding:0 2px; }
   .chip .x:hover{ color:var(--accent); }
@@ -2094,6 +2094,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   .map-color-row .mc-toggle input{ width:auto; flex:0 0 auto; }
   .map-color-row input[type=color]{ flex:0 0 44px; height:30px; padding:2px; }
   .map-color-row input[type=color]:disabled{ opacity:.4; }
+  /* 색 선택 입력 — 원형 스와치 (칩 안의 .sw 제외, 아래에서 따로 처리) */
+  input[type=color]:not(.sw){
+    -webkit-appearance:none; appearance:none; box-sizing:border-box;
+    width:34px !important; height:34px !important; flex:0 0 34px !important;
+    padding:0 !important; border:1px solid var(--line); border-radius:50% !important;
+    overflow:hidden; cursor:pointer;
+  }
+  input[type=color]:not(.sw)::-webkit-color-swatch-wrapper{ padding:0; }
+  input[type=color]:not(.sw)::-webkit-color-swatch{ border:none; border-radius:50%; }
+  input[type=color]:not(.sw)::-moz-color-swatch{ border:none; border-radius:50%; }
   .bd-block{ margin-bottom:10px; }
   .bd-head{ display:flex; align-items:center; gap:8px; }
   .bd-head .mc-toggle{ flex:1; display:flex; align-items:center; gap:7px; font-size:12px; cursor:pointer; margin:0; }
@@ -2301,10 +2311,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     </div>
 
     <div class="field" style="margin-top:6px;">
-      <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
-        <input id="route-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
-        경로 선 표시
-      </label>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; margin:0;">
+          <input id="route-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
+          경로 선 표시
+        </label>
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; margin:0;">
+          <input id="draw-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
+          직접 선 그리기
+        </label>
+      </div>
     </div>
     <div class="field" id="route-opts" style="display:none;">
       <div class="row" style="align-items:center; gap:8px;">
@@ -2326,17 +2342,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       </div>
     </div>
 
-    <!-- ── 직접 선 그리기 (수동 폴리라인, 카메라 경로와 무관) ── -->
-    <div class="field" style="margin-top:6px;">
-      <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
-        <input id="draw-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
-        직접 선 그리기
-      </label>
-    </div>
+    <!-- ── 직접 선 그리기 옵션 (토글은 위 '경로 선 표시'와 한 줄) ── -->
     <div class="field" id="draw-opts" style="display:none;">
       <div class="row" style="align-items:center; gap:8px;">
         <button type="button" id="draw-mode" style="flex:1;">✏️ 그리기 모드</button>
-        <input id="draw-color" type="color" list="palette" value="#E2574C" style="flex:0 0 38px; padding:2px; height:34px;" title="선 색" />
+        <input id="draw-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="선 색" />
       </div>
       <div class="row" style="align-items:center; gap:10px; margin-top:6px;">
         <div class="field" style="margin:0; flex:1;">
