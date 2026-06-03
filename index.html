@@ -2097,7 +2097,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   /* 색 선택 입력 — 원형 스와치 (칩 안의 .sw 제외, 아래에서 따로 처리) */
   input[type=color]:not(.sw){
     -webkit-appearance:none; appearance:none; box-sizing:border-box;
-    width:34px !important; height:34px !important; flex:0 0 34px !important;
+    width:26px !important; height:26px !important; flex:0 0 26px !important;
     padding:0 !important; border:1px solid var(--line); border-radius:50% !important;
     overflow:hidden; cursor:pointer;
   }
@@ -2312,11 +2312,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     <div class="field" style="margin-top:6px;">
       <div style="display:flex; align-items:center; gap:16px;">
-        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; margin:0;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; margin:0;">
           <input id="route-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
           경로 선 표시
         </label>
-        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; margin:0;">
+        <label style="display:flex; align-items:center; gap:7px; cursor:pointer; font-size:11px; margin:0;">
           <input id="draw-on" type="checkbox" style="width:auto; flex:0 0 auto;" />
           직접 선 그리기
         </label>
