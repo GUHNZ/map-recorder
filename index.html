@@ -1931,7 +1931,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   html, body { margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:var(--font); }
   #map { position:absolute; inset:0; }
 
-  #frame-guide { position:absolute; pointer-events:none; z-index:5; border:1px dashed rgba(255,255,255,.35); display:none; }
+  #frame-guide { position:absolute; pointer-events:none; z-index:5; border:1px dashed rgba(255,255,255,.6); box-shadow:0 0 0 100vmax rgba(0,0,0,.5); display:none; }
 
   #drop-hint {
     position:absolute; z-index:9; top:18px; left:50%; transform:translateX(-50%);
@@ -3412,7 +3412,20 @@ function initRecorder(map) {
     Object.assign(guide.style, { width:dw+'px', height:dh+'px', left:(vw-dw)/2+'px', top:(vh-dh)/2+'px', display:'block' });
     readout();
   }
-  function readout(){ const cv = map.getCanvas(); $('resout').textContent = `실제 녹화 해상도: ${cv.width} × ${cv.height}`; }
+  // 선택된 캡처 영역에 맞춘 소스 크롭(device px) + 출력 크기. 'full'이면 전체 캔버스.
+  function frameCropRect(cv) {
+    const val = $('frame').value;
+    if (val === 'full') return { sx:0, sy:0, sw:cv.width, sh:cv.height, ow:cv.width, oh:cv.height, full:true };
+    const [fw, fh] = val.split('x').map(Number);
+    const tAR = fw/fh, cAR = cv.width/cv.height;
+    let sw, sh;
+    if (cAR > tAR) { sh = cv.height; sw = Math.round(sh*tAR); } else { sw = cv.width; sh = Math.round(sw/tAR); }  // 비율 맞춰 중앙 크롭
+    return { sx: Math.round((cv.width-sw)/2), sy: Math.round((cv.height-sh)/2), sw, sh, ow: fw, oh: fh, full:false };
+  }
+  function readout(){
+    const cv = map.getCanvas(), val = $('frame').value;
+    $('resout').textContent = `실제 녹화 해상도: ${val === 'full' ? (cv.width + ' × ' + cv.height) : val.replace('x',' × ')}`;
+  }
   $('frame').addEventListener('change', applyFrame);
   map.on('resize', readout); map.on('idle', readout);
   applyFrame();
@@ -4114,9 +4127,20 @@ function initRecorder(map) {
       if (showLoc && locFirst) bakeLocLabels();     // 첫 컷: 출발 화면 기준으로 라벨 좌/우 굽기
       await sleep(250);
 
-      // 2) 정지 구간에도 프레임이 빠지지 않도록 캔버스 강제 리페인트 펌프
+      // 캡처 영역(프레임) 크롭: 선택 시 오프스크린 캔버스에 해당 영역만 그려 그 캔버스를 녹화
+      const cv0 = map.getCanvas();
+      const fr = frameCropRect(cv0);
+      let outCv = null, outCtx = null;
+      if (!fr.full) { outCv = Object.assign(document.createElement('canvas'), { width: fr.ow, height: fr.oh }); outCtx = outCv.getContext('2d'); }
+
+      // 2) 정지 구간에도 프레임이 빠지지 않도록 캔버스 강제 리페인트 펌프 (+ 선택 영역 크롭 그리기)
       pumping = true;
-      const pump = () => { if (pumping) { map.triggerRepaint(); requestAnimationFrame(pump); } };
+      const pump = () => {
+        if (!pumping) return;
+        map.triggerRepaint();
+        if (outCtx) outCtx.drawImage(cv0, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, fr.ow, fr.oh);
+        requestAnimationFrame(pump);
+      };
       pump();
       // 핀 팝업 애니메이션 드라이버 (매 프레임 사이즈 갱신 + 위치핀 뷰포트 진입 체크)
       const drivePins = () => {
@@ -4126,7 +4150,7 @@ function initRecorder(map) {
       };
       if (showPins) drivePins();
 
-      const stream = map.getCanvas().captureStream(fps);
+      const stream = (outCv || cv0).captureStream(fps);
       console.log('[REC] captureStream OK, 트랙:', stream.getVideoTracks().length);
       const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: mbps*1_000_000 });
       console.log('[REC] MediaRecorder 생성 OK, state=', rec.state);
@@ -4266,8 +4290,9 @@ function initRecorder(map) {
 
       // 캔버스 크기 (짝수로 보정 — H.264 요구사항)
       const cv = map.getCanvas();
-      let W = cv.width  - (cv.width  % 2);
-      let H = cv.height - (cv.height % 2);
+      const fr = frameCropRect(cv);                 // 캡처 영역 크롭/출력 크기
+      let W = fr.full ? (cv.width  - cv.width  % 2) : fr.ow;
+      let H = fr.full ? (cv.height - cv.height % 2) : fr.oh;
 
       // H.264 레벨별 최대 픽셀(매크로블록) 한계에 맞춰 코덱 레벨 자동 선택 + 필요 시 축소
       // 레벨 코드(16진): 4.0=0x28, 4.1=0x29, 4.2=0x2a, 5.0=0x32, 5.1=0x33, 5.2=0x34
@@ -4310,7 +4335,7 @@ function initRecorder(map) {
       encoder.configure({ codec: chosen, width: W, height: H, bitrate: mbps*1_000_000, framerate: fps });
 
       // 캔버스 실제 크기와 인코딩 크기가 다르면(축소된 경우) 리샘플용 오프스크린 캔버스
-      const needResize = (W !== cv.width || H !== cv.height);
+      const needResize = !fr.full || (W !== cv.width || H !== cv.height);
       const rcv = needResize ? Object.assign(document.createElement('canvas'), { width: W, height: H }) : null;
       const rctx = rcv ? rcv.getContext('2d') : null;
 
@@ -4319,11 +4344,11 @@ function initRecorder(map) {
       // 한 프레임 인코딩 (정확한 타임스탬프 부여 → 길이 정확)
       const encodeFrame = async (keyFrame=false) => {
         let src = cv;
-        if (needResize) { rctx.drawImage(cv, 0, 0, W, H); src = rcv; }  // 축소 리샘플
-        const bmp = await createImageBitmap(src);
-        const vf = new VideoFrame(bmp, { timestamp: Math.round(frameIdx * usPerFrame), duration: Math.round(usPerFrame) });
+        if (needResize) { rctx.drawImage(cv, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, W, H); src = rcv; }  // 크롭/축소 리샘플
+        // 캔버스에서 곧바로 VideoFrame 생성 (createImageBitmap 단계 생략 → 프레임당 복사·대기 절감)
+        const vf = new VideoFrame(src, { timestamp: Math.round(frameIdx * usPerFrame), duration: Math.round(usPerFrame) });
         encoder.encode(vf, { keyFrame: keyFrame || (frameIdx % (fps*2) === 0) });
-        vf.close(); bmp.close();
+        vf.close();
         frameIdx++;
         // 인코더가 밀리지 않도록 가끔 양보
         if (encoder.encodeQueueSize > 8) { while (encoder.encodeQueueSize > 4) await sleep(4); }
