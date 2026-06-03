@@ -1979,7 +1979,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   button { width:100%; cursor:pointer; border:1px solid var(--line); background:var(--panel-2); color:var(--txt); border-radius:7px; padding:9px 10px; font-family:var(--font); font-size:12px; transition:background .12s, border-color .12s, opacity .12s; }
   button:hover:not(:disabled){ background:#2c313d; }
-  button:disabled{ opacity:.45; cursor:not-allowed; }
+  button:disabled{ opacity:.35; cursor:not-allowed; }
   button.set{ text-align:left; }
   button.set .tag{ color:var(--muted); font-size:10px; display:block; margin-top:3px; min-height:13px; }
   button.set.done{ border-color:#2e5d39; } button.set.done .tag{ color:var(--ok); }
@@ -2067,8 +2067,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   /* 지도 위 핀 마커 */
   .map-pin{ width:28px; height:38px; cursor:grab; filter:drop-shadow(0 2px 3px rgba(0,0,0,.4)); transition:opacity .15s; }
-  #map.pins-ghost .map-pin:not(.loc-pin){ opacity:.45; }   /* 출발·도착·경유지 핀 */
-  #map.locpins-ghost .map-pin.loc-pin{ opacity:.45; }      /* 위치 표시 핀 */
+  #map.pins-ghost .map-pin:not(.loc-pin){ opacity:.35; }   /* 출발·도착·경유지 핀 */
+  #map.locpins-ghost .map-pin.loc-pin{ opacity:.35; }      /* 위치 표시 핀 */
   /* 위치 핀 라벨 (화면 위치에 따라 좌/우) */
   .map-pin .loc-label{ position:absolute; top:12px; transform:translateY(-50%); white-space:nowrap; font-size:14px; font-weight:600; line-height:1; color:#000; pointer-events:none; text-shadow:0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff; }
   .map-pin.label-right .loc-label{ left:32px; text-align:left; }
@@ -3378,7 +3378,8 @@ function initRecorder(map) {
   $('draw-mode').addEventListener('click', () => { drawMode ? exitDrawMode() : enterDrawMode(); });
   $('draw-color').addEventListener('input', applyDrawStyle);
   $('draw-width').addEventListener('input', () => { $('draw-w-val').textContent = $('draw-width').value; applyDrawStyle(); });
-  $('draw-undo').addEventListener('click', () => { if (drawCurrent.length) drawCurrent.pop(); else drawnStrokes.pop(); refreshDrawPreview(); });
+  function undoDraw() { if (drawCurrent.length) drawCurrent.pop(); else drawnStrokes.pop(); refreshDrawPreview(); }
+  $('draw-undo').addEventListener('click', undoDraw);
   $('draw-clear').addEventListener('click', () => { drawnStrokes.length = 0; drawCurrent = []; _drawMouse = null; refreshDrawPreview(); });
 
   // 지도 포인터: 그리기 모드일 때만 동작
@@ -3393,7 +3394,11 @@ function initRecorder(map) {
   map.on('mousemove', (e) => { if (!drawMode || !drawCurrent.length) return; _drawMouse = [e.lngLat.lng, e.lngLat.lat]; refreshDrawPreview(); });
   window.addEventListener('keydown', (e) => {
     if (!drawMode) return;
-    if (e.key === 'Enter') finishStroke();
+    const t = e.target, inField = t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+      if (inField) return;            // 입력칸에선 기본 텍스트 되돌리기 유지
+      e.preventDefault(); undoDraw();   // ⌘Z / Ctrl+Z
+    } else if (e.key === 'Enter') finishStroke();
     else if (e.key === 'Escape') { drawCurrent = []; _drawMouse = null; refreshDrawPreview(); }
   });
   map.on('style.load', () => { if ($('draw-on').checked) { addDrawLayer(); applyDrawStyle(); setDrawVisible(true); refreshDrawPreview(); } });
@@ -3460,6 +3465,7 @@ function initRecorder(map) {
   // 위치 핀 라벨 (사용자 업로드 폰트 가능)
   let LOC_FONT_FAMILY = '';           // 업로드된 폰트명 ('' = 기본 sans-serif)
   let _locFontFace = null;
+  let LOC_HALO = '#ffffff';           // 라벨 외곽선/그림자 색 (위성 스타일에선 어둡게)
 
   // 라벨을 핀 이미지에 구워 만든다. 좌우 대칭 패딩으로 뾰족점이 항상 가로 중앙(anchor 'bottom') 에 오게 한다.
   function locLabelImageData(rec, side, scale = 2) {
@@ -3492,7 +3498,7 @@ function initRecorder(map) {
       ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round';
       ctx.lineWidth = Math.max(2, fSize * 0.22);
-      ctx.strokeStyle = 'rgba(255,255,255,.95)';   // 흰 외곽선 (가독성)
+      ctx.strokeStyle = LOC_HALO;   // 외곽선 (가독성) — 위성 스타일에선 어둡게
       const ty = pinTop + 14;                       // 핀 머리 중앙 높이
       let tx;
       if (side === 'left') { ctx.textAlign = 'right'; tx = pinX - gap; }
@@ -3652,6 +3658,7 @@ function initRecorder(map) {
     $(src).classList.add('done');
     flash($(grab)); flash($(src));                   // 버튼·칩 반짝
     $(go).disabled = false;
+    updatePinGhost();                                // 영상 미표시(체크 해제)면 흐리게
   }
 
   $('set-start').addEventListener('click', () => setPoint('start', null));
@@ -3710,16 +3717,27 @@ function initRecorder(map) {
     setPinColor('end', color);
     setWpColor(color);
     applyRouteStyle();
+    // 위성 스타일: 라벨 흰 글자 + 어두운 외곽선/그림자 / 그 외: 어두운 글자 + 흰 외곽선
+    const sat = styleKey === 'satellite';
+    LOC_HALO = sat ? '#000000' : '#ffffff';
+    $('locpin-text-color').value = sat ? '#ffffff' : '#0F3564';
+    refreshAllLocLabels();
   }
 
   // "녹화 영상에 핀 표시" 꺼져 있으면 화면 핀을 반투명 (영상엔 안 나온다는 암시)
+  // 미체크(영상 미표시) 핀을 지도에서 흐리게 — 마커 요소에 직접 opacity 적용 (Mapbox 마커 DOM 구조와 무관하게 확실히 적용)
   function updatePinGhost() {
-    $('map').classList.toggle('pins-ghost',    !$('pin-in-video').checked);     // 출발·도착·경유지 핀
-    $('map').classList.toggle('locpins-ghost', !$('locpin-in-video').checked);  // 위치 표시 핀
+    const pathGhost = !$('pin-in-video').checked;
+    const locGhost  = !$('locpin-in-video').checked;
+    $('map').classList.toggle('pins-ghost', pathGhost);        // (보조) CSS 폴백
+    $('map').classList.toggle('locpins-ghost', locGhost);
+    const set = (m, g) => { if (m) m.getElement().style.opacity = g ? '0.35' : ''; };
+    set(PIN.start.marker, pathGhost); set(PIN.end.marker, pathGhost);
+    waypoints.forEach(w => set(w.marker, pathGhost));
+    locPins.forEach(p => set(p.marker, locGhost));
   }
   $('pin-in-video').addEventListener('change', updatePinGhost);
   $('locpin-in-video').addEventListener('change', updatePinGhost);
-  updatePinGhost();   // 초기 상태 (기본 꺼짐 → 반투명)
 
   // 드래그용 핀 이미지 (라운드 박스 대신 핀 아이콘만 따라다니게)
   function makeDragPin(color) {
@@ -3815,6 +3833,7 @@ function initRecorder(map) {
     wpMarker(i);
     if (w.marker) bounceEl(w.marker.getElement());
     renderWaypoints();
+    updatePinGhost();                                // 영상 미표시(체크 해제)면 흐리게
   }
 
   function renderWaypoints() {
@@ -3915,6 +3934,7 @@ function initRecorder(map) {
     lbl.style.fontFamily = LOC_FONT_FAMILY ? `'${LOC_FONT_FAMILY}', sans-serif` : '';
     lbl.style.fontSize = (Math.max(8, parseInt($('locpin-text-size').value, 10) || 16)) + 'px';
     lbl.style.color = $('locpin-text-color').value || '#000';
+    lbl.style.textShadow = `0 0 3px ${LOC_HALO}, 0 0 3px ${LOC_HALO}, 0 0 2px ${LOC_HALO}`;
   }
   function updateLocLabelEl(i) {
     const p = locPins[i]; if (!p || !p.marker) return;
@@ -3951,6 +3971,7 @@ function initRecorder(map) {
     updateLocLabelSides();
     bounceEl(el);
     renderLocPins();
+    updatePinGhost();                                // 영상 미표시(체크 해제)면 흐리게
   }
   function renderLocPins() {
     const box = $('locpin-list'); if (!box) return;
