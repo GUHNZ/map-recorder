@@ -3521,15 +3521,17 @@ function initRecorder(map) {
     if (textW) {
       ctx.font = `600 ${fSize}px ${fam}`;
       ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(2, fSize * 0.22);
-      ctx.strokeStyle = LOC_HALO;   // 외곽선 (가독성) — 위성 스타일에선 어둡게
       const ty = pinTop + 14;                       // 핀 머리 중앙 높이
       let tx;
       if (side === 'left') { ctx.textAlign = 'right'; tx = pinX - gap; }
       else                 { ctx.textAlign = 'left';  tx = pinX + pinW + gap; }
-      ctx.strokeText(text, tx, ty);
+      // 미리보기(CSS text-shadow)와 동일한 '부드러운 글로우' — 그림자 블러로 여러 번 그려 밀도를 맞춤
       ctx.fillStyle = tcol;
+      ctx.shadowColor = LOC_HALO; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.shadowBlur = 3;
+      ctx.fillText(text, tx, ty);
+      ctx.fillText(text, tx, ty);
+      ctx.fillText(text, tx, ty);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;   // 그림자 끄고 본문은 또렷하게 한 번 더
       ctx.fillText(text, tx, ty);
     }
     return ctx.getImageData(0, 0, cv.width, cv.height);
