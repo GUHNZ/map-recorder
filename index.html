@@ -3240,8 +3240,9 @@ function initRecorder(map) {
       const origTip = coords[coords.length-1];
       const prev = coords[coords.length-2];
       const rot = bearingDeg(prev, origTip);        // 방향은 도착 방향 기준
-      // 도착에서 화면상 ARROW_BACK px 만큼 '경로를 따라' 뒤로 간 지점에서 멈춤 (아크가 촘촘해 마지막 한 구간은 15px보다 짧으므로 누적해서 거슬러 올라감)
-      const ARROW_BACK = 15;
+      // 도착에서 화면상 ARROW_BACK px 만큼 '경로를 따라' 뒤로 간 지점에서 멈춤 (촘촘한 아크라 누적해서 거슬러 올라감)
+      // 줌에 반비례: 축소(낮은 줌)일수록 더 많이, 확대(높은 줌)일수록 적게. 기준 줌 11에서 15px, 8~80px 클램프.
+      const ARROW_BACK = Math.max(8, Math.min(80, 15 * 11 / map.getZoom()));
       let drawCoords = coords, tip = origTip;
       let remain = ARROW_BACK, pA = map.project(origTip);
       for (let i = coords.length - 1; i > 0; i--) {
