@@ -3240,15 +3240,21 @@ function initRecorder(map) {
       const origTip = coords[coords.length-1];
       const prev = coords[coords.length-2];
       const rot = bearingDeg(prev, origTip);        // 방향은 도착 방향 기준
-      // 도착(현재 tip)에서 화면상 ARROW_BACK px 만큼 뒤로 당겨 아크·화살표가 핀과 겹치지 않게
+      // 도착에서 화면상 ARROW_BACK px 만큼 '경로를 따라' 뒤로 간 지점에서 멈춤 (아크가 촘촘해 마지막 한 구간은 15px보다 짧으므로 누적해서 거슬러 올라감)
       const ARROW_BACK = 15;
       let drawCoords = coords, tip = origTip;
-      const pTip = map.project(origTip), pPrev = map.project(prev);
-      const dx = pTip.x - pPrev.x, dy = pTip.y - pPrev.y, len = Math.hypot(dx, dy);
-      if (len > ARROW_BACK) {
-        const b = map.unproject([pTip.x - dx/len*ARROW_BACK, pTip.y - dy/len*ARROW_BACK]);
-        tip = [b.lng, b.lat];
-        drawCoords = coords.slice(0, -1).concat([tip]);   // 마지막 점을 당긴 점으로 교체
+      let remain = ARROW_BACK, pA = map.project(origTip);
+      for (let i = coords.length - 1; i > 0; i--) {
+        const pB = map.project(coords[i-1]);
+        const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+        if (seg >= remain) {
+          const r = seg ? remain / seg : 0;
+          const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
+          tip = [u.lng, u.lat];
+          drawCoords = coords.slice(0, i).concat([tip]);   // 잘린 지점까지 + 보간점
+          break;
+        }
+        remain -= seg; pA = pB;
       }
       if (src) src.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: drawCoords } });
       if (aSrc) aSrc.setData({ type:'FeatureCollection', features: [
