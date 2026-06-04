@@ -4050,6 +4050,22 @@ function initRecorder(map) {
   const pickMime = (fmt) => CODECS[fmt].find(m => MediaRecorder.isTypeSupported(m)) || '';
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+  // 캡처 파이프라인 예열: 첫 녹화가 가끔 "데이터 비었습니다"로 나오는 문제 회피
+  // (사용자가 WebM↔MP4 토글·재렌더로 발견한 동작을 짧은 더미 캡처로 자동화 — 영상에 영향 없음)
+  function warmupCapture(stream, mime) {
+    return new Promise((resolve) => {
+      let done = false; const fin = () => { if (!done) { done = true; resolve(); } };
+      try {
+        const w = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1_000_000 });
+        w.ondataavailable = () => {};           // 결과는 버림 (예열 목적)
+        w.onstop = fin; w.onerror = fin;
+        w.start();
+        setTimeout(() => { try { w.requestData(); w.stop(); } catch (_) { fin(); } }, 300);
+      } catch (_) { fin(); }
+      setTimeout(fin, 900);                      // 안전 타임아웃
+    });
+  }
+
   // 지원되는 포맷만 드롭다운에 채움 (mp4 우선)
   (function fillFormats() {
     const sel = $('format'); sel.innerHTML = '';
@@ -4160,6 +4176,8 @@ function initRecorder(map) {
 
       const stream = (outCv || cv0).captureStream(fps);
       console.log('[REC] captureStream OK, 트랙:', stream.getVideoTracks().length);
+      setStatus('캡처 준비 중…','busy');
+      await warmupCapture(stream, mime);   // 파이프라인 예열 → 첫 시도 빈 데이터 방지
       const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: mbps*1_000_000 });
       console.log('[REC] MediaRecorder 생성 OK, state=', rec.state);
       const chunks = [];
