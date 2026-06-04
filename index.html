@@ -4091,6 +4091,29 @@ function initRecorder(map) {
     });
   }
 
+  // WebCodecs H.264 하드웨어 인코더 예열 — "부드럽게 녹화를 먼저 돌리면 실시간 녹화가 풀린다"는 현상을 자동화.
+  // (그게 VideoEncoder(=하드웨어 H.264) 초기화 효과로 보임. 잠깐 init→2프레임 인코딩→flush→close.)
+  async function warmupEncoder() {
+    if (typeof VideoEncoder === 'undefined') return;   // WebCodecs 미지원이면 건너뜀
+    let enc = null;
+    try {
+      const cv = map.getCanvas();
+      let W = cv.width - (cv.width % 2), H = cv.height - (cv.height % 2);
+      const MAXPIX = 9437184, codedPix = (w,h) => Math.ceil(w/16)*16 * Math.ceil(h/16)*16;
+      let g = 0; while (codedPix(W, H) > MAXPIX && g++ < 8) { const s = Math.sqrt(MAXPIX/codedPix(W, H)) * 0.99; W = Math.max(2, Math.floor(W*s/2)*2); H = Math.max(2, Math.floor(H*s/2)*2); }
+      if (W < 2 || H < 2) return;
+      let codec = 'avc1.640028';
+      try { const sup = await VideoEncoder.isConfigSupported({ codec, width:W, height:H, bitrate:8_000_000, framerate:30 }); if (!sup || !sup.supported) codec = 'avc1.640034'; } catch (_) {}
+      enc = new VideoEncoder({ output: () => {}, error: () => {} });
+      enc.configure({ codec, width:W, height:H, bitrate:8_000_000, framerate:30 });
+      let src = cv;
+      if (W !== cv.width || H !== cv.height) { const t = Object.assign(document.createElement('canvas'), {width:W, height:H}); t.getContext('2d').drawImage(cv, 0, 0, W, H); src = t; }
+      for (let i = 0; i < 2; i++) { const vf = new VideoFrame(src, { timestamp: i*33333, duration: 33333 }); enc.encode(vf, { keyFrame: i === 0 }); vf.close(); }
+      await enc.flush();
+    } catch (_) {}
+    try { if (enc && enc.state !== 'closed') enc.close(); } catch (_) {}
+  }
+
   // 지원되는 포맷만 드롭다운에 채움 (mp4 우선)
   (function fillFormats() {
     const sel = $('format'); sel.innerHTML = '';
@@ -4204,7 +4227,8 @@ function initRecorder(map) {
       const stream = (outCv || cv0).captureStream(fps);
       console.log('[REC] captureStream OK, 트랙:', stream.getVideoTracks().length);
       setStatus('캡처 준비 중…','busy');
-      await warmupCapture(stream, mime);   // 파이프라인 예열 → 첫 시도 빈 데이터 방지
+      await warmupEncoder();               // WebCodecs H.264 인코더 예열 ('부드럽게 녹화'가 풀어주던 것과 동일)
+      await warmupCapture(stream, mime);   // MediaRecorder 파이프라인 예열 → 첫 시도 빈 데이터 방지
       const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: mbps*1_000_000 });
       console.log('[REC] MediaRecorder 생성 OK, state=', rec.state);
       const chunks = [];
@@ -4361,13 +4385,16 @@ function initRecorder(map) {
         { hex:'34', maxPix: 9437184 },   // 5.2
       ];
       const MAX_PIX = 9437184;           // 레벨 5.2 한계 (약 8.8K²급)
-      // 너무 크면 비율 유지하며 축소
-      if (W*H > MAX_PIX) {
-        const s = Math.sqrt(MAX_PIX / (W*H));
-        W = Math.floor(W*s/2)*2; H = Math.floor(H*s/2)*2;
-        console.log('[SMOOTH] 해상도 축소:', W, 'x', H);
+      // H.264는 16×16 매크로블록 단위로 코딩 → 코드영역 = 16의 배수로 올림한 W·H. 이 기준으로 축소 판정.
+      const codedPix = (w, h) => Math.ceil(w/16)*16 * Math.ceil(h/16)*16;
+      // 너무 크면 비율 유지하며 축소 (16정렬 코드영역 기준, 재정렬 대비 루프)
+      let _g = 0;
+      while (codedPix(W, H) > MAX_PIX && _g++ < 8) {
+        const s = Math.sqrt(MAX_PIX / codedPix(W, H)) * 0.99;
+        W = Math.max(2, Math.floor(W*s/2)*2); H = Math.max(2, Math.floor(H*s/2)*2);
+        console.log('[SMOOTH] 해상도 축소:', W, 'x', H, '(코드영역', codedPix(W,H), ')');
       }
-      const pix = W*H;
+      const pix = codedPix(W, H);
       const lvl = LEVELS.find(l => pix <= l.maxPix) || LEVELS[LEVELS.length-1];
       const codec = 'avc1.6400' + lvl.hex;   // High profile + 선택 레벨
 
@@ -4399,6 +4426,7 @@ function initRecorder(map) {
       let frameIdx = 0;
       // 한 프레임 인코딩 (정확한 타임스탬프 부여 → 길이 정확)
       const encodeFrame = async (keyFrame=false) => {
+        if (encoder.state === 'closed') return;   // 인코더 오류로 닫혔으면 더 인코딩하지 않음 (연쇄 오류 방지)
         let src = cv;
         if (needResize) { rctx.drawImage(cv, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, W, H); src = rcv; }  // 크롭/축소 리샘플
         // 캔버스에서 곧바로 VideoFrame 생성 (createImageBitmap 단계 생략 → 프레임당 복사·대기 절감)
