@@ -3264,7 +3264,7 @@ function initRecorder(map) {
     if (!coords || coords.length < 2) return 0;
     let geoLen = 0, scrLen = 0, pPrev = map.project(coords[0]);
     for (let i = 1; i < coords.length; i++) { const p = map.project(coords[i]); scrLen += Math.hypot(p.x-pPrev.x, p.y-pPrev.y); geoLen += geoDist(coords[i-1], coords[i]); pPrev = p; }
-    const GAP = 14;
+    const GAP = 8;   // 점 간격 목표(px) — 작을수록 촘촘
     return geoLen / Math.max(2, Math.round(scrLen / GAP));
   }
   function setRouteFull(coords) { _routeDotStep = routeDotStep(coords); setRouteData(coords); }   // 전체 경로(미리보기): 간격 갱신 후 그림
@@ -3394,6 +3394,10 @@ function initRecorder(map) {
   $('route-color').addEventListener('input', applyRouteStyle);
   $('route-width').addEventListener('input', () => { $('route-w-val').textContent = $('route-width').value; applyRouteStyle(); });
   map.on('style.load', () => { if ($('route-on').checked) { addRouteLayer(); applyRouteStyle(); previewRoute(); } });
+  // 줌 변경 시 점선 점 간격을 화면 기준으로 다시 맞춤 (녹화 중 제외 — 녹화는 셋업 시점 간격으로 안정 유지)
+  map.on('zoom', () => {
+    if (!busy && $('route-on').checked && $('route-dash').value === 'dash' && _lastRouteCoords.length) setRouteFull(_lastRouteCoords);
+  });
 
   /* ── 직접 선 그리기 (수동 폴리라인, 카메라 경로와 무관) ── */
   const drawnStrokes = [];   // 완료된 선들: [ [[lng,lat],...], ... ]
