@@ -2182,7 +2182,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     </div>
 
     <div class="field">
-      <label>줌 <span style="color:var(--muted); font-size:10px;">(키보드 +/−)</span> <span id="zoom-val" style="float:right; color:var(--txt);">—</span></label>
+      <label>줌 <span style="color:var(--muted); font-size:10px;">(키보드 −/+)</span> <span id="zoom-val" style="float:right; color:var(--txt);">—</span></label>
       <input id="zoom-slider" type="range" min="0" max="22" step="0.05" value="6" style="padding:0;" />
     </div>
 
@@ -2246,9 +2246,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     <!-- ── 지역/주소 검색 ── -->
     <div class="field" id="geocode-field" style="position:relative;">
-      <label>지역·주소 검색</label>
       <div class="row" style="align-items:center; gap:8px;">
-        <input id="geo-input" placeholder="예: 서울특별시청, Tokyo, 37.5, 127.0" style="flex:1" autocomplete="off" />
+        <input id="geo-input" placeholder="지역·주소 검색 (예: 서울시청, Paris)" style="flex:1" autocomplete="off" />
         <button id="geo-clear" title="지우기" style="flex:0 0 34px; height:34px; padding:0;">✕</button>
       </div>
       <div id="geo-results" class="geo-results" style="display:none;"></div>
@@ -2832,32 +2831,25 @@ function initRecorder(map) {
     }
     const token = mapboxgl.accessToken;
     if (!token) { showGeoMessage('토큰이 필요합니다'); return; }
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json`
-      + `?access_token=${token}&language=ko,en&limit=6&types=country,region,district,place,locality,neighborhood,address,poi`;
     try {
-      const res = await fetch(url);
+      const places = await fetchPlaces(q, token);
       if (seq !== _geoSeq) return;            // 더 최신 검색이 있으면 무시
-      if (!res.ok) { showGeoMessage('검색 실패'); return; }
-      const data = await res.json();
-      const feats = data.features || [];
-      if (!feats.length) { showGeoMessage('결과 없음'); return; }
+      if (places == null) { showGeoMessage('검색 실패'); return; }
+      const list = places.filter(p => p.center);
+      if (!list.length) { showGeoMessage('결과 없음'); return; }
       geoResults.innerHTML = '';
-      feats.forEach(f => {
-        const name = f.text || f.place_name;
-        const ctx = f.place_name && f.place_name !== name ? f.place_name : '';
+      list.forEach(p => {
         const item = document.createElement('div');
         item.className = 'geo-item';
-        item.innerHTML = `<div class="gi-name">${name}</div>${ctx ? `<div class="gi-ctx">${ctx}</div>` : ''}`;
+        item.innerHTML = `<div class="gi-name">${escAttr(p.name)}</div>${p.ctx ? `<div class="gi-ctx">${escAttr(p.ctx)}</div>` : ''}`;
         item.addEventListener('click', () => {
-          const [lng, lat] = f.center;
-          // bbox 있으면 그 범위에 맞춰, 없으면 적당한 줌으로 이동
-          if (f.bbox && f.bbox.length === 4) {
-            map.fitBounds([[f.bbox[0], f.bbox[1]], [f.bbox[2], f.bbox[3]]], { padding: 60, duration: 1200, essential: true });
+          const [lng, lat] = p.center;
+          if (p.bbox && p.bbox.length === 4) {
+            map.fitBounds([[p.bbox[0], p.bbox[1]], [p.bbox[2], p.bbox[3]]], { padding: 60, duration: 1200, essential: true });
           } else {
-            const z = (f.place_type || []).some(t => ['address','poi','neighborhood'].includes(t)) ? 14 : 11;
-            map.flyTo({ center: [lng, lat], zoom: z, duration: 1200, essential: true });
+            map.flyTo({ center: [lng, lat], zoom: p.poi ? 15 : 12, duration: 1200, essential: true });
           }
-          geoInput.value = name;
+          geoInput.value = p.name;
           hideGeoResults();
         });
         geoResults.appendChild(item);
@@ -2866,6 +2858,32 @@ function initRecorder(map) {
     } catch (_) {
       if (seq === _geoSeq) showGeoMessage('검색 오류');
     }
+  }
+  // 장소 검색: Search Box(약칭·POI 매칭 우수) 우선, 0건/실패 시 Geocoding v5 폴백. 현재 화면 중심으로 근접 가중.
+  async function fetchPlaces(q, token) {
+    const c = map.getCenter();
+    const prox = `${c.lng.toFixed(4)},${c.lat.toFixed(4)}`;
+    try {   // 1) Search Box forward
+      const r = await fetch(`https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}&access_token=${token}&language=ko&limit=6&proximity=${prox}`);
+      if (r.ok) {
+        const d = await r.json();
+        if (d.features && d.features.length) return d.features.map(f => {
+          const pr = f.properties || {};
+          return { name: pr.name || pr.name_preferred || (f.text || ''), ctx: pr.place_formatted || pr.full_address || '',
+                   center: f.geometry && f.geometry.coordinates, bbox: pr.bbox, poi: pr.feature_type === 'poi' || pr.feature_type === 'address' };
+        });
+      }
+    } catch (_) {}
+    try {   // 2) Geocoding v5 폴백
+      const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${token}&language=ko,en&limit=6&autocomplete=true&fuzzyMatch=true&proximity=${prox}&types=country,region,district,place,locality,neighborhood,address,poi`);
+      if (!r.ok) return null;
+      const d = await r.json();
+      return (d.features || []).map(f => {
+        const name = f.text || f.place_name;
+        return { name, ctx: (f.place_name && f.place_name !== name) ? f.place_name : '', center: f.center, bbox: f.bbox,
+                 poi: (f.place_type || []).some(t => ['address','poi','neighborhood'].includes(t)) };
+      });
+    } catch (_) { return null; }
   }
   geoInput.addEventListener('input', () => {
     const q = geoInput.value.trim();
