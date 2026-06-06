@@ -2903,12 +2903,15 @@ function initRecorder(map) {
 
   // 타일 전환 부드럽게 (위성 등 raster 레이어 cross-fade 시간)
   const tileFade = $('tile-fade'), tileFadeVal = $('tile-fade-val');
-  function applyRasterFade() {
-    const ms = parseInt(tileFade.value, 10);
-    tileFadeVal.textContent = ms + 'ms';
+  function setRasterFade(ms) {   // 모든 raster 레이어의 타일 크로스페이드 시간(ms)
     (map.getStyle().layers || []).forEach(l => {
       if (l.type === 'raster') { try { map.setPaintProperty(l.id, 'raster-fade-duration', ms); } catch (_) {} }
     });
+  }
+  function applyRasterFade() {
+    const ms = parseInt(tileFade.value, 10);
+    tileFadeVal.textContent = ms + 'ms';
+    setRasterFade(ms);
   }
   tileFade.addEventListener('input', applyRasterFade);
   map.on('style.load', applyRasterFade);
@@ -4307,6 +4310,7 @@ function initRecorder(map) {
       };
 
       // 1) 타일 프리로드 (모든 경유지·도착 워밍 후 출발로)
+      setRasterFade(0);                              // 녹화 중 타일 크로스페이드 끔 → 페이드 도중 캡처로 생기는 줄무늬/밴딩 방지
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
       if (showPath) bakeCapPin('end');              // 도착 핀 라벨 (도착 화면 기준 좌/우)
@@ -4398,7 +4402,7 @@ function initRecorder(map) {
       setStatus(`저장 완료 ✓ (.${ext} 다운로드됨)`,'done');
     } catch (err) {
       pumping = false; console.error(err); setStatus('오류: ' + err.message, '');
-    } finally { busy = false; setUI(true); if (pinRAF) cancelAnimationFrame(pinRAF); hideCapturePins(); refreshDrawPreview(); pinEls.forEach(el => el.style.display = ''); }
+    } finally { busy = false; setUI(true); if (pinRAF) cancelAnimationFrame(pinRAF); hideCapturePins(); refreshDrawPreview(); applyRasterFade(); pinEls.forEach(el => el.style.display = ''); }
   }
   $('record').addEventListener('click', record);
 
@@ -4475,6 +4479,7 @@ function initRecorder(map) {
       const totalLegs = legs.length;
 
       // 프리로드
+      setRasterFade(0);                              // 녹화 중 타일 크로스페이드 끔 → 페이드 도중 캡처로 생기는 줄무늬/밴딩 방지
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
       if (showPath) bakeCapPin('end');              // 도착 핀 라벨 (도착 화면 기준 좌/우)
@@ -4624,7 +4629,7 @@ function initRecorder(map) {
       console.error(err); setStatus('오류: ' + err.message, '');
       try { if (encoder && encoder.state !== 'closed') encoder.close(); } catch (_) {}
     } finally {
-      busy = false; setUI(true); hideCapturePins(); refreshDrawPreview(); pinEls.forEach(el => el.style.display = '');
+      busy = false; setUI(true); hideCapturePins(); refreshDrawPreview(); applyRasterFade(); pinEls.forEach(el => el.style.display = '');
     }
   }
   $('record-smooth').addEventListener('click', recordSmooth);
