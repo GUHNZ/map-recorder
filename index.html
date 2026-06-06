@@ -2490,7 +2490,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <div class="field"><label>화질 (Mbps)</label>
             <div class="stepper">
               <button type="button" class="step" data-t="bitrate" data-d="-1">−</button>
-              <input id="bitrate" type="number" min="2" step="1" value="16" />
+              <input id="bitrate" type="number" min="2" step="1" value="24" />
               <button type="button" class="step" data-t="bitrate" data-d="1">＋</button>
             </div>
           </div>
@@ -3207,7 +3207,17 @@ function initRecorder(map) {
       paint: {
         'line-color': $('route-color').value,
         'line-width': parseFloat($('route-width').value),
-        'line-dasharray': ($('route-dash').value === 'dash') ? [2,1.5] : [1]
+        'line-dasharray': [1]
+      }
+    });
+    // 점선용 점 레이어 (line-dasharray 깜빡임 회피 → 실제 원 도형)
+    map.addSource('route-dots', { type:'geojson', data:{ type:'FeatureCollection', features: [] } });
+    map.addLayer({
+      id:'route-dots-layer', type:'circle', source:'route-dots',
+      paint:{
+        'circle-color': $('route-color').value,
+        'circle-radius': Math.max(1.5, parseFloat($('route-width').value) * 0.6),
+        'circle-pitch-alignment': 'map',
       }
     });
     // 화살표 아이콘 등록
@@ -3228,29 +3238,59 @@ function initRecorder(map) {
     });
   }
   let _lastRouteCoords = [];
+  let _routeDotStep = 0;                 // 점선용 점 간격 (지리거리, 고정) — 전체 경로 설정 시 1회 계산
+  const _EMPTY_FC = { type:'FeatureCollection', features: [] };
+  const _EMPTY_LINE = { type:'Feature', geometry:{ type:'LineString', coordinates: [] } };
+  // lng/lat 거리 (위도 보정한 등거리 근사)
+  function geoDist(a, b) { const ml = (a[1]+b[1])*0.5*Math.PI/180; return Math.hypot((b[0]-a[0])*Math.cos(ml), b[1]-a[1]); }
+  // 시작점 기준 _routeDotStep 간격으로 점 배치 → 자라나도 이미 찍힌 점은 고정 위치(깜빡임 없음)
+  function routeDotsFC(coords) {
+    const step = _routeDotStep, feats = [];
+    if (!step || !coords || coords.length < 2) return { type:'FeatureCollection', features: feats };
+    feats.push({ type:'Feature', geometry:{ type:'Point', coordinates: coords[0] } });
+    let acc = 0, next = step;
+    for (let i = 1; i < coords.length; i++) {
+      const segLen = geoDist(coords[i-1], coords[i]);
+      while (segLen > 0 && acc + segLen >= next) {
+        feats.push({ type:'Feature', geometry:{ type:'Point', coordinates: lerpPt(coords[i-1], coords[i], (next - acc) / segLen) } });
+        next += step;
+      }
+      acc += segLen;
+    }
+    return { type:'FeatureCollection', features: feats };
+  }
+  // 전체 경로 기준 점 간격: 현재 화면에서 ~GAP px 가 되도록 → 고정 지리거리로 환산
+  function routeDotStep(coords) {
+    if (!coords || coords.length < 2) return 0;
+    let geoLen = 0, scrLen = 0, pPrev = map.project(coords[0]);
+    for (let i = 1; i < coords.length; i++) { const p = map.project(coords[i]); scrLen += Math.hypot(p.x-pPrev.x, p.y-pPrev.y); geoLen += geoDist(coords[i-1], coords[i]); pPrev = p; }
+    const GAP = 14;
+    return geoLen / Math.max(2, Math.round(scrLen / GAP));
+  }
+  function setRouteFull(coords) { _routeDotStep = routeDotStep(coords); setRouteData(coords); }   // 전체 경로(미리보기): 간격 갱신 후 그림
+
   function setRouteData(coords) {
     _lastRouteCoords = coords || [];
     const src = map.getSource('route-line');
     const aSrc = map.getSource('route-arrow');
+    const dSrc = map.getSource('route-dots');
     const isArc = $('route-shape').value === 'arc';
+    const isDash = $('route-dash').value === 'dash';
 
+    let drawCoords = coords || [], arrowFeat = null;
     if (isArc && coords && coords.length >= 2) {
       const w = parseFloat($('route-width').value);
       const size = (3*w) / 64;
-      const origTip = coords[coords.length-1];
-      const prev = coords[coords.length-2];
+      const origTip = coords[coords.length-1], prev = coords[coords.length-2];
       const rot = bearingDeg(prev, origTip);        // 방향은 도착 방향 기준
-      // 도착에서 화면상 ARROW_BACK px 만큼 '경로를 따라' 뒤로 간 지점에서 멈춤 (촘촘한 아크라 누적해서 거슬러 올라감)
-      // 줌에 반비례: 축소일수록 더 많이, 확대일수록 적게. 기준 줌 11에서 15px, 10~26px 클램프(과한 당김 방지).
+      // 도착에서 화면상 ARROW_BACK px 만큼 경로를 따라 뒤로 간 지점에서 멈춤 (줌에 반비례·클램프, 경유지 안 넘게 제한)
       let ARROW_BACK = Math.max(10, Math.min(26, 15 * 11 / map.getZoom()));
-      // 마지막 경유지~도착 화면거리의 40% 이하로 추가 제한 → 당김이 경유지를 넘어가 잘리지 않게
       const _pw = waypoints.filter(w => w.cam);
       if (_pw.length && endCam) {
         const pl = map.project(_pw[_pw.length-1].cam.center), pe = map.project(endCam.center);
         ARROW_BACK = Math.min(ARROW_BACK, Math.hypot(pl.x - pe.x, pl.y - pe.y) * 0.4);
       }
-      let drawCoords = coords, tip = origTip;
-      let remain = ARROW_BACK, pA = map.project(origTip);
+      let tip = origTip, remain = ARROW_BACK, pA = map.project(origTip);
       for (let i = coords.length - 1; i > 0; i--) {
         const pB = map.project(coords[i-1]);
         const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
@@ -3258,28 +3298,35 @@ function initRecorder(map) {
           const r = seg ? remain / seg : 0;
           const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
           tip = [u.lng, u.lat];
-          drawCoords = coords.slice(0, i).concat([tip]);   // 잘린 지점까지 + 보간점
+          drawCoords = coords.slice(0, i).concat([tip]);
           break;
         }
         remain -= seg; pA = pB;
       }
-      if (src) src.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: drawCoords } });
-      if (aSrc) aSrc.setData({ type:'FeatureCollection', features: [
-        { type:'Feature', properties:{ rot, size },
-          geometry:{ type:'Point', coordinates: tip } }
-      ]});
-    } else {
-      if (src) src.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: coords } });
-      if (aSrc) aSrc.setData({ type:'FeatureCollection', features: [] });
+      arrowFeat = { type:'Feature', properties:{ rot, size }, geometry:{ type:'Point', coordinates: tip } };
     }
+
+    // 선: 점선이면 점(원) 도형, 아니면 실선
+    if (isDash && drawCoords.length >= 2) {
+      if (src) src.setData(_EMPTY_LINE);
+      if (dSrc) dSrc.setData(routeDotsFC(drawCoords));
+    } else {
+      if (src) src.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: drawCoords } });
+      if (dSrc) dSrc.setData(_EMPTY_FC);
+    }
+    if (aSrc) aSrc.setData(arrowFeat ? { type:'FeatureCollection', features:[arrowFeat] } : _EMPTY_FC);
   }
   function applyRouteStyle() {
     if (!map.getLayer('route-line-layer')) return;
     map.setPaintProperty('route-line-layer', 'line-color', $('route-color').value);
     map.setPaintProperty('route-line-layer', 'line-width', parseFloat($('route-width').value));
-    map.setPaintProperty('route-line-layer', 'line-dasharray', ($('route-dash').value === 'dash') ? [2,1.5] : [1]);
+    map.setPaintProperty('route-line-layer', 'line-dasharray', [1]);   // 점선은 점 도형으로 처리(route-dots)
+    if (map.getLayer('route-dots-layer')) {
+      map.setPaintProperty('route-dots-layer', 'circle-color', $('route-color').value);
+      map.setPaintProperty('route-dots-layer', 'circle-radius', Math.max(1.5, parseFloat($('route-width').value) * 0.6));
+    }
     if (map.getLayer('route-arrow-layer')) map.setPaintProperty('route-arrow-layer', 'icon-color', $('route-color').value);
-    // 현재 선 좌표로 화살표 갱신 (굵기·모드 변경 반영)
+    // 현재 선 좌표로 화살표/점 갱신 (굵기·색·모드 변경 반영)
     if (_lastRouteCoords.length) setRouteData(_lastRouteCoords);
   }
   // 두 점 사이 선형 보간 (t: 0~1)
@@ -3324,15 +3371,15 @@ function initRecorder(map) {
     const shape = $('route-shape').value;
     if (shape === 'arc') {
       const coords = arcPathCoords();
-      if (coords.length >= 2) { setRouteData(coords); setStatus('직선(아크) 경로 준비됨 ✓', 'done'); }
+      if (coords.length >= 2) { setRouteFull(coords); setStatus('직선(아크) 경로 준비됨 ✓', 'done'); }
       else { setStatus('출발·도착을 먼저 지정하세요.', ''); }
     } else {
       try {
         setStatus('도로 경로 가져오는 중…', 'busy');
         await fetchRoadRoute();
-        if (roadCoords) { setRouteData(roadCoords); setStatus('도로 경로 준비됨 ✓', 'done'); }
+        if (roadCoords) { setRouteFull(roadCoords); setStatus('도로 경로 준비됨 ✓', 'done'); }
         else { setStatus('출발·도착을 먼저 지정하세요.', ''); }
-      } catch (err) { roadCoords = null; setStatus('경로 오류: ' + err.message + ' (아크로 표시)', ''); setRouteData(arcPathCoords()); }
+      } catch (err) { roadCoords = null; setStatus('경로 오류: ' + err.message + ' (아크로 표시)', ''); setRouteFull(arcPathCoords()); }
     }
   }
 
@@ -4181,6 +4228,7 @@ function initRecorder(map) {
       if (drawRoute) {
         addRouteLayer(); applyRouteStyle();
         pathCoords = await resolvePathCoords();             // 도로 또는 아크 (선택에 따라)
+        _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
@@ -4368,6 +4416,7 @@ function initRecorder(map) {
       if (drawRoute) {
         addRouteLayer(); applyRouteStyle();
         pathCoords = await resolvePathCoords();
+        _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
