@@ -3324,28 +3324,9 @@ function initRecorder(map) {
     if (isArc && coords && coords.length >= 2) {
       const w = parseFloat($('route-width').value);
       const size = (3*w) / 64;
-      const origTip = coords[coords.length-1], prev = coords[coords.length-2];
-      const rot = bearingDeg(prev, origTip);        // 방향은 도착 방향 기준
-      let tip = origTip;
-      // '도착(전체 경로 끝)'에 닿았을 때만 화면상 ARROW_BACK px 뒤로 당김. 성장 중·경유지 통과 시엔 끝까지 그대로 통과.
-      const atDest = endCam && Math.abs(origTip[0]-endCam.center[0]) < 1e-6 && Math.abs(origTip[1]-endCam.center[1]) < 1e-6;
-      if (atDest) {
-        const ARROW_BACK = Math.max(10, Math.min(26, 15 * 11 / map.getZoom()));   // 줌 반비례·클램프
-        let remain = ARROW_BACK, pA = map.project(origTip);
-        for (let i = coords.length - 1; i > 0; i--) {
-          const pB = map.project(coords[i-1]);
-          const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
-          if (seg >= remain) {
-            const r = seg ? remain / seg : 0;
-            const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
-            tip = [u.lng, u.lat];
-            drawCoords = coords.slice(0, i).concat([tip]);
-            break;
-          }
-          remain -= seg; pA = pB;
-        }
-      }
-      arrowFeat = { type:'Feature', properties:{ rot, size }, geometry:{ type:'Point', coordinates: tip } };
+      const tip = coords[coords.length-1], prev = coords[coords.length-2];
+      // 아크 경로 끝은 trimArcEnd로 미리 도착핀 앞에서 잘라두므로, 여기선 끝점(tip)에 화살표만. (성장 중 끝까지 갔다 되돌아감 없음)
+      arrowFeat = { type:'Feature', properties:{ rot: bearingDeg(prev, tip), size }, geometry:{ type:'Point', coordinates: tip } };
     }
 
     // 선: 점선이면 점(원) 도형, 아니면 실선
@@ -3422,6 +3403,22 @@ function initRecorder(map) {
     if (_wpFracs && L < _wpFracs.length - 1) return _wpFracs[L] + (_wpFracs[L+1] - _wpFracs[L]) * t;
     return (L + t) / totalLegs;
   }
+  // 아크 경로의 '끝'을 화면상 일정 px 만큼 미리 잘라둠 → 선이 도착핀까지 안 가고 그 앞에서 멈춤(되돌아감 없음). 줌 반비례.
+  function trimArcEnd(coords) {
+    if (!coords || coords.length < 2) return coords;
+    let remain = Math.max(10, Math.min(26, 15 * 11 / map.getZoom())), pA = map.project(coords[coords.length-1]);
+    for (let i = coords.length - 1; i > 0; i--) {
+      const pB = map.project(coords[i-1]);
+      const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+      if (seg >= remain) {
+        const r = seg ? remain / seg : 0;
+        const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
+        return coords.slice(0, i).concat([[u.lng, u.lat]]);
+      }
+      remain -= seg; pA = pB;
+    }
+    return coords;
+  }
 
   // 현재 선택된 경로 모양에 따른 좌표 (도로는 비동기 fetch 필요)
   async function resolvePathCoords() {
@@ -3437,7 +3434,7 @@ function initRecorder(map) {
     addRouteLayer(); applyRouteStyle();
     const shape = $('route-shape').value;
     if (shape === 'arc') {
-      const coords = arcPathCoords();
+      const coords = trimArcEnd(arcPathCoords());
       if (coords.length >= 2) { setRouteFull(coords); setStatus('직선(아크) 경로 준비됨 ✓', 'done'); }
       else { setStatus('출발·도착을 먼저 지정하세요.', ''); }
     } else {
@@ -3446,7 +3443,7 @@ function initRecorder(map) {
         await fetchRoadRoute();
         if (roadCoords) { setRouteFull(roadCoords); setStatus('도로 경로 준비됨 ✓', 'done'); }
         else { setStatus('출발·도착을 먼저 지정하세요.', ''); }
-      } catch (err) { roadCoords = null; setStatus('경로 오류: ' + err.message + ' (아크로 표시)', ''); setRouteFull(arcPathCoords()); }
+      } catch (err) { roadCoords = null; setStatus('경로 오류: ' + err.message + ' (아크로 표시)', ''); setRouteFull(trimArcEnd(arcPathCoords())); }
     }
   }
 
@@ -4339,6 +4336,7 @@ function initRecorder(map) {
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
       if (showPath) bakeCapPin('end');              // 도착 핀 라벨 (도착 화면 기준 좌/우)
+      if (drawRoute && $('route-shape').value === 'arc' && pathCoords.length >= 2) { pathCoords = trimArcEnd(pathCoords); _wpFracs = pathWpFracs(pathCoords); }   // 아크 끝을 도착핀 앞에서 잘라둠(되돌아감 방지) — 도착 화면 줌 기준
       if (showLoc && !locFirst) bakeLocPins();      // 마지막 컷: 위치 핀 라벨 (도착 화면 기준)
       for (let k = 0; k < stops.length; k++) { map.jumpTo(stops[k].cam); await idle(); if (showPath) bakeCapPin('wp'+k); }
       map.jumpTo(startCam); await idle();
@@ -4509,6 +4507,7 @@ function initRecorder(map) {
       setStatus('타일 프리로드 중…','busy');
       map.jumpTo(endCam); await idle();
       if (showPath) bakeCapPin('end');              // 도착 핀 라벨 (도착 화면 기준 좌/우)
+      if (drawRoute && $('route-shape').value === 'arc' && pathCoords.length >= 2) { pathCoords = trimArcEnd(pathCoords); _wpFracs = pathWpFracs(pathCoords); }   // 아크 끝을 도착핀 앞에서 잘라둠(되돌아감 방지) — 도착 화면 줌 기준
       if (showLoc && !locFirst) bakeLocPins();      // 마지막 컷: 위치 핀 라벨 (도착 화면 기준)
       for (let k = 0; k < stops.length; k++) { map.jumpTo(stops[k].cam); await idle(); if (showPath) bakeCapPin('wp'+k); }
       await renderFrame(startCam);
