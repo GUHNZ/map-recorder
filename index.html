@@ -3326,25 +3326,24 @@ function initRecorder(map) {
       const size = (3*w) / 64;
       const origTip = coords[coords.length-1], prev = coords[coords.length-2];
       const rot = bearingDeg(prev, origTip);        // 방향은 도착 방향 기준
-      // 도착에서 화면상 ARROW_BACK px 만큼 경로를 따라 뒤로 간 지점에서 멈춤 (줌에 반비례·클램프, 경유지 안 넘게 제한)
-      let ARROW_BACK = Math.max(10, Math.min(26, 15 * 11 / map.getZoom()));
-      const _pw = waypoints.filter(w => w.cam);
-      if (_pw.length && endCam) {
-        const pl = map.project(_pw[_pw.length-1].cam.center), pe = map.project(endCam.center);
-        ARROW_BACK = Math.min(ARROW_BACK, Math.hypot(pl.x - pe.x, pl.y - pe.y) * 0.4);
-      }
-      let tip = origTip, remain = ARROW_BACK, pA = map.project(origTip);
-      for (let i = coords.length - 1; i > 0; i--) {
-        const pB = map.project(coords[i-1]);
-        const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
-        if (seg >= remain) {
-          const r = seg ? remain / seg : 0;
-          const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
-          tip = [u.lng, u.lat];
-          drawCoords = coords.slice(0, i).concat([tip]);
-          break;
+      let tip = origTip;
+      // '도착(전체 경로 끝)'에 닿았을 때만 화면상 ARROW_BACK px 뒤로 당김. 성장 중·경유지 통과 시엔 끝까지 그대로 통과.
+      const atDest = endCam && Math.abs(origTip[0]-endCam.center[0]) < 1e-6 && Math.abs(origTip[1]-endCam.center[1]) < 1e-6;
+      if (atDest) {
+        const ARROW_BACK = Math.max(10, Math.min(26, 15 * 11 / map.getZoom()));   // 줌 반비례·클램프
+        let remain = ARROW_BACK, pA = map.project(origTip);
+        for (let i = coords.length - 1; i > 0; i--) {
+          const pB = map.project(coords[i-1]);
+          const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+          if (seg >= remain) {
+            const r = seg ? remain / seg : 0;
+            const u = map.unproject([pA.x + (pB.x - pA.x) * r, pA.y + (pB.y - pA.y) * r]);
+            tip = [u.lng, u.lat];
+            drawCoords = coords.slice(0, i).concat([tip]);
+            break;
+          }
+          remain -= seg; pA = pB;
         }
-        remain -= seg; pA = pB;
       }
       arrowFeat = { type:'Feature', properties:{ rot, size }, geometry:{ type:'Point', coordinates: tip } };
     }
@@ -3397,6 +3396,31 @@ function initRecorder(map) {
       acc += segLen[i-1]; out.push(coords[i]);
     }
     return out;
+  }
+
+  // 경로 좌표에서 각 거점(출발/경유지/도착)이 놓인 '거리 비율(0~1)' — 성장 진행도를 카메라(구간)에 동기화
+  let _wpFracs = null;
+  function pathWpFracs(coords) {
+    const pts = routeWaypointCoords();   // [출발, 경유지..., 도착]
+    if (!coords || coords.length < 2 || pts.length < 2) return null;
+    const cum = [0];
+    for (let i = 1; i < coords.length; i++) cum.push(cum[i-1] + geoDist(coords[i-1], coords[i]));
+    const total = cum[cum.length-1] || 1;
+    let prev = 0;
+    return pts.map((pt, k) => {
+      if (k === 0) return 0;
+      if (k === pts.length - 1) return 1;
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < coords.length; i++) { const d = geoDist(pt, coords[i]); if (d < bd) { bd = d; best = i; } }
+      let f = Math.min(0.999, cum[best] / total);
+      if (f < prev) f = prev;            // 단조 증가 보장
+      prev = f; return f;
+    });
+  }
+  // 구간 L에서 진행 t일 때의 전체 경로 거리 비율 (경유지 간 거리 차 보정 → 카메라와 동기화). _wpFracs 없으면 균등 분할 폴백.
+  function legFrac(L, t, totalLegs) {
+    if (_wpFracs && L < _wpFracs.length - 1) return _wpFracs[L] + (_wpFracs[L+1] - _wpFracs[L]) * t;
+    return (L + t) / totalLegs;
   }
 
   // 현재 선택된 경로 모양에 따른 좌표 (도로는 비동기 fetch 필요)
@@ -4276,6 +4300,7 @@ function initRecorder(map) {
         addRouteLayer(); applyRouteStyle();
         pathCoords = await resolvePathCoords();             // 도로 또는 아크 (선택에 따라)
         _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
+        _wpFracs = pathWpFracs(pathCoords);                  // 성장 진행도를 카메라(구간 거리)에 동기화
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
@@ -4294,9 +4319,9 @@ function initRecorder(map) {
         if ((drawRoute && pathCoords.length) || drawLinesOn) {
           const grow = () => {
             const legT = Math.min(1, (performance.now() - t0) / (durSec*1000));
-            const overall = (legDone + easeInOut(legT)) / totalLegs;   // 구간별 ease 적용
-            if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, overall));
-            if (drawLinesOn) setDrawData(overall);
+            const ct = (legDone + easeInOut(legT)) / totalLegs;   // 카메라 시간 진행
+            if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(legDone, easeInOut(legT), totalLegs)));   // 경로선: 거리 동기화
+            if (drawLinesOn) setDrawData(ct);   // 직접 그린 선: 카메라 시간 기준
             if (legT < 1) raf = requestAnimationFrame(grow);
           };
           raf = requestAnimationFrame(grow);
@@ -4305,7 +4330,7 @@ function initRecorder(map) {
         await new Promise((resolve) => { let d=false; const f=()=>{ if(!d){d=true;resolve();} }; map.once('moveend', f); setTimeout(f, durSec*1000+400); });
         if (raf) cancelAnimationFrame(raf);
         legDone++;
-        if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legDone / totalLegs));
+        if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(legDone, 0, totalLegs)));
         if (drawLinesOn) setDrawData(legDone / totalLegs);
       };
 
@@ -4465,6 +4490,7 @@ function initRecorder(map) {
         addRouteLayer(); applyRouteStyle();
         pathCoords = await resolvePathCoords();
         _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
+        _wpFracs = pathWpFracs(pathCoords);                  // 성장 진행도를 카메라(구간 거리)에 동기화
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
@@ -4591,14 +4617,14 @@ function initRecorder(map) {
         for (let f = 0; f <= legFrames; f++) {
           const t = easeInOut(f / legFrames);
           if (showPins) map.getSource('capture-pins').setData(capPinFC(gFrame));   // 핀 사이즈 갱신
-          if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L + t) / totalLegs));
+          if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(L, t, totalLegs)));
           if (drawLinesOn) setDrawData((L + t) / totalLegs);
           await renderFrame(interpCam(from, to, t));            // setData 반영된 프레임 캡처
           await encodeFrame(f === 0);
           gFrame++;
           if (f % 3 === 0) setStatus(`부드럽게 · 구간 ${L+1}/${legs.length} (${Math.round(f/legFrames*100)}%)`,'busy');
         }
-        if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, (L+1)/totalLegs));
+        if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(L, 1, totalLegs)));
         if (drawLinesOn) setDrawData((L+1)/totalLegs);
         if (showPins) {
           triggerCapPin(L < stops.length ? ('wp'+L) : 'end', gFrame);   // 도착 → 해당 핀 팝업
