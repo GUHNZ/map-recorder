@@ -3325,8 +3325,10 @@ function initRecorder(map) {
       const w = parseFloat($('route-width').value);
       const size = (3*w) / 64;
       const tip = coords[coords.length-1], prev = coords[coords.length-2];
-      // 아크 경로 끝은 trimArcEnd로 미리 도착핀 앞에서 잘라두므로, 여기선 끝점(tip)에 화살표만. (성장 중 끝까지 갔다 되돌아감 없음)
-      arrowFeat = { type:'Feature', properties:{ rot: bearingDeg(prev, tip), size }, geometry:{ type:'Point', coordinates: tip } };
+      // 화살표 각도: 현재 구간 시작점(_arrowAnchor)→끝점 직선 기준. 경유지에 똑바로 들어오고 출발할 때 회전. (없으면 마지막 선분 접선)
+      // 끝은 trimArcEnd로 미리 도착핀 앞에서 잘라둠 → 끝점(tip)에 화살표만.
+      const aFrom = (_arrowAnchor && (_arrowAnchor[0] !== tip[0] || _arrowAnchor[1] !== tip[1])) ? _arrowAnchor : prev;
+      arrowFeat = { type:'Feature', properties:{ rot: bearingDeg(aFrom, tip), size }, geometry:{ type:'Point', coordinates: tip } };
     }
 
     // 선: 점선이면 점(원) 도형, 아니면 실선
@@ -3381,6 +3383,8 @@ function initRecorder(map) {
 
   // 경로 좌표에서 각 거점(출발/경유지/도착)이 놓인 '거리 비율(0~1)' — 성장 진행도를 카메라(구간)에 동기화
   let _wpFracs = null;
+  let _routePts = null;     // [출발, 경유지..., 도착] center 배열 (구간 시작점 기준 화살표 각도용)
+  let _arrowAnchor = null;  // 화살표 각도를 '현재 구간 시작점 → 끝점' 직선으로 잡기 위한 기준점 (없으면 마지막 선분 접선)
   function pathWpFracs(coords) {
     const pts = routeWaypointCoords();   // [출발, 경유지..., 도착]
     if (!coords || coords.length < 2 || pts.length < 2) return null;
@@ -3431,6 +3435,7 @@ function initRecorder(map) {
 
   async function previewRoute() {
     if (!$('route-on').checked) return;
+    { const pp = routeWaypointCoords(); _arrowAnchor = pp.length >= 2 ? pp[pp.length-2] : null; }   // 미리보기: 마지막 구간 시작점 기준 (스테일 방지)
     addRouteLayer(); applyRouteStyle();
     const shape = $('route-shape').value;
     if (shape === 'arc') {
@@ -4298,6 +4303,7 @@ function initRecorder(map) {
         pathCoords = await resolvePathCoords();             // 도로 또는 아크 (선택에 따라)
         _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
         _wpFracs = pathWpFracs(pathCoords);                  // 성장 진행도를 카메라(구간 거리)에 동기화
+        _routePts = routeWaypointCoords();                   // 구간 시작점(화살표 각도 기준)
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
@@ -4317,6 +4323,7 @@ function initRecorder(map) {
           const grow = () => {
             const legT = Math.min(1, (performance.now() - t0) / (durSec*1000));
             const ct = (legDone + easeInOut(legT)) / totalLegs;   // 카메라 시간 진행
+            _arrowAnchor = _routePts ? _routePts[legDone] : null;   // 현재 구간 시작점 → 화살표가 그 방향 직선으로
             if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(legDone, easeInOut(legT), totalLegs)));   // 경로선: 거리 동기화
             if (drawLinesOn) setDrawData(ct);   // 직접 그린 선: 카메라 시간 기준
             if (legT < 1) raf = requestAnimationFrame(grow);
@@ -4327,6 +4334,7 @@ function initRecorder(map) {
         await new Promise((resolve) => { let d=false; const f=()=>{ if(!d){d=true;resolve();} }; map.once('moveend', f); setTimeout(f, durSec*1000+400); });
         if (raf) cancelAnimationFrame(raf);
         legDone++;
+        _arrowAnchor = _routePts ? _routePts[Math.max(0, legDone-1)] : null;   // 방금 끝낸 구간 시작점 기준 (경유지에 똑바로 들어온 각도 유지)
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(legDone, 0, totalLegs)));
         if (drawLinesOn) setDrawData(legDone / totalLegs);
       };
@@ -4489,6 +4497,7 @@ function initRecorder(map) {
         pathCoords = await resolvePathCoords();
         _routeDotStep = routeDotStep(pathCoords);            // 점선 점 간격 고정 (전체 경로 기준)
         _wpFracs = pathWpFracs(pathCoords);                  // 성장 진행도를 카메라(구간 거리)에 동기화
+        _routePts = routeWaypointCoords();                   // 구간 시작점(화살표 각도 기준)
         setRouteData(pathCoords.length ? [pathCoords[0]] : []);
       }
 
@@ -4616,6 +4625,7 @@ function initRecorder(map) {
         for (let f = 0; f <= legFrames; f++) {
           const t = easeInOut(f / legFrames);
           if (showPins) map.getSource('capture-pins').setData(capPinFC(gFrame));   // 핀 사이즈 갱신
+          _arrowAnchor = _routePts ? _routePts[L] : null;   // 현재 구간 시작점 → 화살표가 그 방향 직선으로
           if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(L, t, totalLegs)));
           if (drawLinesOn) setDrawData((L + t) / totalLegs);
           await renderFrame(interpCam(from, to, t));            // setData 반영된 프레임 캡처
@@ -4623,6 +4633,7 @@ function initRecorder(map) {
           gFrame++;
           if (f % 3 === 0) setStatus(`부드럽게 · 구간 ${L+1}/${legs.length} (${Math.round(f/legFrames*100)}%)`,'busy');
         }
+        _arrowAnchor = _routePts ? _routePts[L] : null;   // 방금 끝낸 구간 시작점 기준 (경유지에 똑바로 들어온 각도 유지)
         if (drawRoute && pathCoords.length) setRouteData(partialPath(pathCoords, legFrac(L, 1, totalLegs)));
         if (drawLinesOn) setDrawData((L+1)/totalLegs);
         if (showPins) {
