@@ -4519,6 +4519,9 @@ function initRecorder(map) {
       if (drawRoute && $('route-shape').value === 'arc' && pathCoords.length >= 2) { pathCoords = trimArcEnd(pathCoords); _wpFracs = pathWpFracs(pathCoords); }   // 아크 끝을 도착핀 앞에서 잘라둠(되돌아감 방지) — 도착 화면 줌 기준
       if (showLoc && !locFirst) bakeLocPins();      // 마지막 컷: 위치 핀 라벨 (도착 화면 기준)
       for (let k = 0; k < stops.length; k++) { map.jumpTo(stops[k].cam); await idle(); if (showPath) bakeCapPin('wp'+k); }
+      // 경로 타일 미리 데우기 — 각 구간 중간 시점을 훑어 타일 캐시에 올림 → 인코딩 중 프레임별 타일 로딩 대기 ↓ (화질 손실 없음)
+      setStatus('경로 타일 프리로드 중…','busy');
+      for (const lg of legs) { const N = 6; for (let s = 1; s <= N; s++) { map.jumpTo(interpCam(lg.from, lg.to, s/(N+1))); await idle(); } }
       await renderFrame(startCam);
       if (showPath) bakeCapPin('start');            // 출발 핀 라벨 (출발 화면 기준)
       if (showLoc && locFirst) bakeLocPins();       // 첫 컷: 위치 핀 라벨 (출발 화면 기준)
