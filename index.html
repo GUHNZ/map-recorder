@@ -1964,6 +1964,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     position:absolute; top:16px; right:16px; z-index:10; width:320px; max-height:calc(100vh - 32px); overflow-y:auto;
     background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.5);
   }
+  /* 액션 버튼 — 화면 우측 하단 플로팅 (설정 패널과 위아래로 분리, 항상 표시) */
+  #action-panel {
+    position:absolute; right:16px; bottom:16px; z-index:10; width:320px; max-width:calc(100vw - 32px);
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; box-shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  #action-panel button { width:100%; }
+
   .panel h1 { font-size:14px; letter-spacing:.04em; margin:0 0 16px; display:flex; align-items:center; justify-content:center; gap:8px; }
   .panel h1 .dot { width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
   .sub { font-size:11px; color:var(--muted); margin:0 0 14px; }
@@ -2513,13 +2520,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         </div>
       </div>
     </details>
-
-    <button id="record" class="rec">● 녹화 &amp; 저장</button>
-    <button id="record-smooth" style="margin-top:6px; border-color:#3a5d8f;">✦ 부드럽게 녹화 (인코딩 시간 소요)</button>
-    <button id="capture-png" style="margin-top:6px;">현재 지도 캡처</button>
-    <button id="export-svg" style="margin-top:6px;">색칠 영역 SVG 내보내기</button>
-    <div id="status">대기 중</div>
   </div>
+</div>
+
+<!-- ── 액션 버튼 (우측 하단 플로팅 · 설정 패널과 위아래로 분리) ── -->
+<div id="action-panel" style="display:none">
+  <button id="record" class="rec">● 녹화 &amp; 저장</button>
+  <button id="record-smooth" style="margin-top:6px; border-color:#3a5d8f;">✦ 부드럽게 녹화 (인코딩 시간 소요)</button>
+  <button id="capture-png" style="margin-top:6px;">현재 지도 캡처</button>
+  <button id="export-svg" style="margin-top:6px;">색칠 영역 SVG 내보내기</button>
+  <div id="status">대기 중</div>
 </div>
 
 <script>
@@ -2545,9 +2555,22 @@ const COUNTRIES = [{"n":"대한민국","i":"KOR","c":[127.7,36],"z":6},{"n":"가
 
 // ── ★ 라이브러리 로드 확인 + 토큰 있으면 자동 로드 ──
 window.addEventListener('DOMContentLoaded', () => {
-  $('panel-handle').addEventListener('click', () => $('panel').classList.toggle('collapsed'));
+  // 설정 패널이 우측 하단 액션 카드와 겹치지 않도록, 패널 높이 상한을 액션 카드 높이만큼 비움 (액션 카드 높이를 실측 → 버튼 수 바뀌어도 안전)
+  function reservePanelSpace() {
+    const ap = $('action-panel');
+    const h = (ap && ap.style.display !== 'none') ? ap.offsetHeight : 0;
+    $('panel').style.maxHeight = `calc(100vh - 32px${h ? ` - ${h + 12}px` : ''})`;
+  }
+  window.addEventListener('resize', reservePanelSpace);
+  $('panel-handle').addEventListener('click', () => {
+    const collapsed = $('panel').classList.toggle('collapsed');
+    $('action-panel').style.display = collapsed ? 'none' : '';   // 접으면(캡처용) 액션 카드도 숨김
+    reservePanelSpace();
+  });
   if (typeof mapboxgl === 'undefined') { $('fatal').style.display = 'flex'; return; }
   $('panel').style.display = 'block';
+  $('action-panel').style.display = '';
+  reservePanelSpace();
   let saved = '';
   try { saved = localStorage.getItem('cmr_token') || ''; } catch (_) {}
   const token = MAPBOX_TOKEN || saved;
