@@ -2185,27 +2185,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     <details id="main-settings" class="adv" open>
       <summary>주 설정</summary>
       <div class="pad">
-    <div class="row">
-      <div class="field">
-        <label>스타일</label>
-        <select id="style-select">
-          <option value="mono_terrain">단색지형</option>
-          <option value="mono">단색</option>
-          <option value="satellite">위성</option>
-          <option value="detail">도로 표시</option>
-          <option value="monotone">모노톤</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>투영</label>
-        <select id="proj-select">
-          <option value="mercator">2D 메르카토르</option>
-          <option value="equirectangular">2D WGS84</option>
-          <option value="globe">3D 구형</option>
-        </select>
-      </div>
-    </div>
-
     <div class="field">
       <label>줌 <span style="color:var(--muted); font-size:10px;">(키보드 −/+)</span> <span id="zoom-val" style="float:right; color:var(--txt);">—</span></label>
       <input id="zoom-slider" type="range" min="0" max="22" step="0.05" value="6" style="padding:0;" />
@@ -2217,7 +2196,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     <div class="field">
       <div class="seg-toggle">
         <button type="button" class="seg-btn active" id="seg-country">국가별</button>
-        <button type="button" class="seg-btn" id="seg-sido">대한민국 시도별</button>
+        <button type="button" class="seg-btn" id="seg-sido">한국 시도별</button>
       </div>
 
       <div id="country-block">
@@ -2382,6 +2361,26 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     <details id="detail-settings" class="adv">
       <summary>세부 설정</summary>
       <div class="pad">
+        <div class="row">
+          <div class="field">
+            <label>스타일</label>
+            <select id="style-select">
+              <option value="mono_terrain">단색지형</option>
+              <option value="mono">단색</option>
+              <option value="satellite">위성</option>
+              <option value="detail">도로 표시</option>
+              <option value="monotone">모노톤</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>투영</label>
+            <select id="proj-select">
+              <option value="mercator">2D 메르카토르</option>
+              <option value="equirectangular">2D WGS84</option>
+              <option value="globe">3D 구형</option>
+            </select>
+          </div>
+        </div>
         <div class="row" style="margin-top:8px;">
           <div class="field" style="margin:0;">
             <label>출발 핀</label>
