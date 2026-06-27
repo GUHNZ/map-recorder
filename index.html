@@ -2531,7 +2531,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   <!-- 세부 설정(details.adv)은 로드 시 JS가 이 위(footer 앞)로 이동시킴 -->
   <div class="action-footer">
     <button id="record" class="rec">● 녹화 &amp; 저장</button>
-    <button id="record-smooth" style="margin-top:6px; border-color:var(--accent);">✦ 부드럽게 녹화 (인코딩 시간 소요)</button>
+    <button id="record-smooth" style="margin-top:6px; border-color:var(--accent);"><span style="color:var(--accent);">●</span> 부드럽게 녹화 (인코딩 시간 소요)</button>
     <button id="capture-png" style="margin-top:6px;">현재 지도 캡처</button>
     <button id="export-svg" style="margin-top:6px;">색칠 영역 SVG 내보내기</button>
     <div id="status">대기 중</div>
@@ -2726,7 +2726,7 @@ function initRecorder(map) {
     });
   }
 
-  $('country-add').addEventListener('click', () => {
+  function addCountryFromInput() {
     const iso = nameToIso[$('country-input').value.trim()];
     if (!iso) { return; }
     const color = $('country-color').value;
@@ -2737,7 +2737,9 @@ function initRecorder(map) {
     applyColors(); renderChips();
     map.flyTo({ center: c.c, zoom: c.z, duration: 1200, essential: true });  // 추가한 나라로 이동
     $('country-input').value = '';
-  });
+  }
+  $('country-add').addEventListener('click', addCountryFromInput);
+  $('country-input').addEventListener('change', addCountryFromInput);   // 목록에서 선택(클릭) 시 바로 추가
 
   $('country-clear').addEventListener('click', () => { colored.length = 0; applyColors(); renderChips(); syncDefaultColor(); });
   $('country-opacity').addEventListener('input', (e) => {
@@ -2796,7 +2798,7 @@ function initRecorder(map) {
       box.appendChild(chip);
     });
   }
-  $('sido-add').addEventListener('click', () => {
+  function addSidoFromInput() {
     const name = resolveSido($('sido-input').value);
     if (!name) return;
     const color = $('sido-color').value;
@@ -2807,7 +2809,9 @@ function initRecorder(map) {
     const m = sidoMeta[name];
     if (m) map.flyTo({ center: m.c, zoom: m.z, duration: 1200, essential: true });
     $('sido-input').value = '';
-  });
+  }
+  $('sido-add').addEventListener('click', addSidoFromInput);
+  $('sido-input').addEventListener('change', addSidoFromInput);   // 목록에서 선택(클릭) 시 바로 추가
   $('sido-clear').addEventListener('click', () => { sidoColored.length = 0; applySidoColors(); renderSidoChips(); });
   $('sido-opacity').addEventListener('input', (e) => {
     if (map.getLayer('sido-color-fill')) map.setPaintProperty('sido-color-fill', 'fill-opacity', parseFloat(e.target.value));
