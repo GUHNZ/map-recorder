@@ -3198,8 +3198,8 @@ function initRecorder(map) {
     });
   });
 
-  // 스타일 바뀌면 피커 갱신 (약간의 지연 후 — 레이어 준비 보장)
-  map.on('style.load', () => { setTimeout(() => { syncMapColorPickers(); syncBoundaryPickers(); }, 60); });
+  // 스타일 바뀌면 피커 갱신 + 경계선 UI 값 적용 (약간의 지연 후 — 레이어 준비 보장). 피커를 네이티브 색으로 먼저 맞춘 뒤 두께/투명도 적용 → 초기에도 보임.
+  map.on('style.load', () => { setTimeout(() => { syncMapColorPickers(); syncBoundaryPickers(); applyAllBoundaries(); }, 60); });
 
   /* ── 경로 선 (카메라 이동 따라 그리기) ── */
   function routeWaypointCoords() {
