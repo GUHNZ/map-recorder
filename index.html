@@ -2234,7 +2234,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <option value="#F17D38"></option>
           <option value="#22CC92"></option>
         </datalist>
-        <button id="country-add" style="margin-top:8px">＋ 추가 (해당 나라로 이동)</button>
         <div id="country-list-wrap" style="display:none; margin-top:10px;">
           <div id="colored-list"></div>
           <div class="row" style="align-items:center; gap:10px; margin-top:6px;">
@@ -2253,7 +2252,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           <input id="sido-color" type="color" list="palette" value="#F17D38" style="flex:0 0 38px; padding:2px; height:34px;" title="색상" />
         </div>
         <datalist id="sido-list"></datalist>
-        <button id="sido-add" style="margin-top:8px">＋ 추가 (해당 시도로 이동)</button>
         <div id="sido-list-wrap" style="display:none; margin-top:10px;">
           <div id="sido-colored-list"></div>
           <div class="row" style="align-items:center; gap:10px; margin-top:6px;">
@@ -2738,8 +2736,8 @@ function initRecorder(map) {
     map.flyTo({ center: c.c, zoom: c.z, duration: 1200, essential: true });  // 추가한 나라로 이동
     $('country-input').value = '';
   }
-  $('country-add').addEventListener('click', addCountryFromInput);
   $('country-input').addEventListener('change', addCountryFromInput);   // 목록에서 선택(클릭) 시 바로 추가
+  $('country-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCountryFromInput(); } });   // 직접 입력 후 Enter
 
   $('country-clear').addEventListener('click', () => { colored.length = 0; applyColors(); renderChips(); syncDefaultColor(); });
   $('country-opacity').addEventListener('input', (e) => {
@@ -2810,8 +2808,8 @@ function initRecorder(map) {
     if (m) map.flyTo({ center: m.c, zoom: m.z, duration: 1200, essential: true });
     $('sido-input').value = '';
   }
-  $('sido-add').addEventListener('click', addSidoFromInput);
   $('sido-input').addEventListener('change', addSidoFromInput);   // 목록에서 선택(클릭) 시 바로 추가
+  $('sido-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSidoFromInput(); } });   // 직접 입력 후 Enter
   $('sido-clear').addEventListener('click', () => { sidoColored.length = 0; applySidoColors(); renderSidoChips(); });
   $('sido-opacity').addEventListener('input', (e) => {
     if (map.getLayer('sido-color-fill')) map.setPaintProperty('sido-color-fill', 'fill-opacity', parseFloat(e.target.value));
@@ -3442,7 +3440,14 @@ function initRecorder(map) {
   // 아크 경로의 '끝'을 화면상 일정 px 만큼 미리 잘라둠 → 선이 도착핀까지 안 가고 그 앞에서 멈춤(되돌아감 없음). 줌 반비례.
   function trimArcEnd(coords) {
     if (!coords || coords.length < 2) return coords;
-    let remain = Math.max(10, Math.min(26, 15 * 11 / map.getZoom())), pA = map.project(coords[coords.length-1]);
+    let remain = Math.max(10, Math.min(26, 15 * 11 / map.getZoom()));
+    // 마지막 경유지~도착 구간 화면 길이의 40%로 제한 → 줌아웃(미리보기) 시에도 경유지를 넘어 자르지 않음
+    const pts = routeWaypointCoords();
+    if (pts.length >= 2) {
+      const pL = map.project(pts[pts.length-2]), pE = map.project(pts[pts.length-1]);
+      remain = Math.min(remain, Math.hypot(pL.x - pE.x, pL.y - pE.y) * 0.4);
+    }
+    let pA = map.project(coords[coords.length-1]);
     for (let i = coords.length - 1; i > 0; i--) {
       const pB = map.project(coords[i-1]);
       const seg = Math.hypot(pA.x - pB.x, pA.y - pB.y);
@@ -4791,7 +4796,7 @@ function initRecorder(map) {
 
   function setStatus(msg, cls){ const el=$('status'); el.textContent=msg; el.className=cls||''; }
   function setUI(enabled){
-    ['set-start','set-end','go-start','go-end','label-start','label-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-add','country-clear','country-opacity','sido-input','sido-color','sido-add','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-text-size','locpin-text-color','locpin-timing','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
+    ['set-start','set-end','go-start','go-end','label-start','label-end','record','record-smooth','capture-png','export-svg','duration','lead','tail','fps','mode','bitrate','format','frame','tile-fade','pin-color-start','pin-color-wp','pin-color-end','land-color','sea-color','river-on','style-select','proj-select','zoom-slider','country-input','country-color','country-clear','country-opacity','sido-input','sido-color','sido-clear','sido-opacity','geo-input','geo-clear','add-waypoint','route-on','route-shape','route-dash','route-color','route-width','pin-in-video','locpin-in-video','locpin-add','locpin-color','locpin-text-size','locpin-text-color','locpin-timing','draw-on','draw-mode','draw-color','draw-width','draw-undo','draw-clear']
       .forEach(id => { $(id).disabled = !enabled; });
     document.querySelectorAll('.step, .wp-ctl, #wp-goto button, .bd-block input, .loc-text').forEach(b => { b.disabled = !enabled; });
     if (enabled){
