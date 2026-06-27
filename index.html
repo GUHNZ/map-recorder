@@ -2463,7 +2463,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
             </div>
             <div class="bd-ctrls">
               <span class="bd-cell">투명도<input type="range" class="bd-opacity" min="0" max="1" step="0.05" value="1" /></span>
-              <span class="bd-cell">두께<input type="range" class="bd-width" min="0.5" max="6" step="0.5" value="2" /></span>
+              <span class="bd-cell">두께<input type="range" class="bd-width" min="0.5" max="6" step="0.5" value="1" /></span>
               <label class="bd-dash-lbl"><input type="checkbox" class="bd-dash" /> 점선</label>
             </div>
           </div>
@@ -4485,11 +4485,15 @@ function initRecorder(map) {
   function renderFrame(cam) {
     return new Promise((resolve) => {
       map.jumpTo(cam);
+      let done = false;
+      const finish = () => { if (done) return; done = true; map.once('render', () => resolve()); map.triggerRepaint(); };
       const check = () => {
-        if (map.loaded() && !map.isMoving()) { map.once('render', () => resolve()); map.triggerRepaint(); }
-        else { map.once('idle', check); }
+        if (done) return;
+        if (map.loaded() && !map.isMoving()) finish();
+        else map.once('idle', check);
       };
       check();
+      setTimeout(finish, 350);   // 타일이 350ms 내 안 끝나도 한 프레임 진행 (프리로드로 대부분 캐시 → 화질 영향 거의 없음, 멈춤 방지)
     });
   }
   const grabFrame = () => new Promise((res) => map.getCanvas().toBlob(res, 'image/png'));
@@ -4592,7 +4596,7 @@ function initRecorder(map) {
       // 인코더가 이 설정을 지원하는지 확인 (미지원이면 레벨을 더 올려 재시도)
       let chosen = codec;
       try {
-        const sup = await VideoEncoder.isConfigSupported({ codec, width: W, height: H, bitrate: mbps*1_000_000, framerate: fps });
+        const sup = await VideoEncoder.isConfigSupported({ codec, width: W, height: H, bitrate: mbps*1_000_000, framerate: fps, hardwareAcceleration: 'prefer-hardware' });
         if (!sup.supported) chosen = 'avc1.640034';   // 최고 레벨로 폴백
       } catch (_) { chosen = 'avc1.640034'; }
 
@@ -4606,7 +4610,7 @@ function initRecorder(map) {
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
         error: (e) => { console.error(e); setStatus('인코더 오류: ' + e.message, ''); },
       });
-      encoder.configure({ codec: chosen, width: W, height: H, bitrate: mbps*1_000_000, framerate: fps });
+      encoder.configure({ codec: chosen, width: W, height: H, bitrate: mbps*1_000_000, framerate: fps, hardwareAcceleration: 'prefer-hardware' });   // GPU 인코더 우선 (없으면 소프트웨어 폴백)
 
       // 캔버스 실제 크기와 인코딩 크기가 다르면(축소된 경우) 리샘플용 오프스크린 캔버스
       const needResize = !fr.full || (W !== cv.width || H !== cv.height);
