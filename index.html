@@ -1967,7 +1967,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   /* 세부 설정 + 액션 버튼 — 화면 우측 하단 플로팅 (설정 패널과 위아래로 분리) */
   #action-panel {
     position:absolute; right:16px; bottom:16px; z-index:10; width:320px; max-width:calc(100vw - 32px);
-    max-height:calc(100vh - 260px); overflow-y:auto;   /* 세부 설정 펼치면 내부 스크롤 (위 설정 패널 자리 ~244px 남김) */
+    max-height:calc(100vh - 32px); overflow-y:auto;   /* 세부 설정 펼치면 내부 스크롤. 실제 상한은 JS(reservePanelSpace)가 동적 분배 */
     background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; box-shadow:0 12px 40px rgba(0,0,0,.5);
   }
   #action-panel .action-footer button { width:100%; }
@@ -2038,6 +2038,15 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   .stepper .step:last-child{ border-radius:0 7px 7px 0; }
   .stepper .step:hover:not(:disabled){ background:#39414f; }
   .stepper .step:active:not(:disabled){ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  /* 주 설정 — 박스 없는 깔끔한 아코디언 헤더 */
+  details.sect{ margin:0; }
+  details.sect > summary{ cursor:pointer; list-style:none; font-size:13px; font-weight:700; color:var(--txt); letter-spacing:.03em; padding:2px 0 12px; display:flex; align-items:center; justify-content:space-between; }
+  details.sect > summary::-webkit-details-marker{ display:none; }
+  details.sect > summary::after{ content:'▾'; font-size:10px; color:var(--muted); }
+  details.sect:not([open]) > summary::after{ content:'▸'; }
+  details.sect:not([open]) > summary{ padding-bottom:2px; }
+  details.sect > summary:hover{ color:var(--accent); }
 
   /* 접이식 세부 설정 */
   details.adv{ margin-bottom:12px; border:1px solid var(--line); border-radius:7px; background:rgba(0,0,0,.15); overflow:hidden; }
@@ -2186,6 +2195,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   </div>
 
   <div id="controls" style="display:none">
+    <details id="main-settings" class="sect" open>
+      <summary>주 설정</summary>
     <div class="row">
       <div class="field">
         <label>스타일</label>
@@ -2379,10 +2390,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       </div>
       <p class="hint" id="draw-hint" style="margin-top:6px;">그리기 모드 ON → 지도를 클릭해 점을 잇고, 더블클릭(또는 Enter)으로 한 선 완료. 카메라 이동에 맞춰 영상에서 그려집니다.</p>
     </div>
+    </details>
 
-    <div class="divider"></div>
-
-    <details class="adv">
+    <details id="detail-settings" class="adv">
       <summary>세부 설정</summary>
       <div class="pad">
         <div class="row" style="margin-top:8px;">
@@ -2562,11 +2572,18 @@ const COUNTRIES = [{"n":"대한민국","i":"KOR","c":[127.7,36],"z":6},{"n":"가
 
 // ── ★ 라이브러리 로드 확인 + 토큰 있으면 자동 로드 ──
 window.addEventListener('DOMContentLoaded', () => {
-  // 설정 패널이 우측 하단 액션 카드와 겹치지 않도록, 패널 높이 상한을 액션 카드 높이만큼 비움 (액션 카드 높이를 실측 → 버튼 수 바뀌어도 안전)
+  // 주 설정(상단)·세부 설정(하단)은 한 번에 하나만 펼침 → 펼친 쪽이 화면을 차지하고, 접힌(헤더만) 쪽 높이만큼만 양보. 둘이 안 겹침.
   function reservePanelSpace() {
-    const ap = $('action-panel');
-    const h = (ap && ap.style.display !== 'none') ? ap.offsetHeight : 0;
-    $('panel').style.maxHeight = `calc(100vh - 32px${h ? ` - ${h + 12}px` : ''})`;
+    const top = $('panel'), bottom = $('action-panel');
+    if (!bottom || bottom.style.display === 'none') { if (top) top.style.maxHeight = 'calc(100vh - 32px)'; return; }   // 접힘(캡처)
+    const advOpen = $('detail-settings') && $('detail-settings').open;
+    if (advOpen) {                       // 세부설정 펼침 → 주설정(top)은 헤더만, bottom이 나머지 차지
+      top.style.maxHeight = '';
+      bottom.style.maxHeight = `calc(100vh - 32px - ${top.offsetHeight + 12}px)`;
+    } else {                             // 주설정 펼침 → 세부설정(bottom)은 헤더+버튼만, top이 나머지 차지
+      bottom.style.maxHeight = '';
+      top.style.maxHeight = `calc(100vh - 32px - ${bottom.offsetHeight + 12}px)`;
+    }
   }
   window.addEventListener('resize', reservePanelSpace);
   $('panel-handle').addEventListener('click', () => {
@@ -2577,9 +2594,14 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof mapboxgl === 'undefined') { $('fatal').style.display = 'flex'; return; }
   $('panel').style.display = 'block';
   $('action-panel').style.display = '';
-  // 세부 설정을 액션 패널(우측 하단) 맨 위로 이동 + 펼침/접힘마다 위 설정 패널 높이 재계산
-  const advEl = document.querySelector('details.adv');
-  if (advEl) { $('action-panel').insertBefore(advEl, $('action-panel').firstElementChild); advEl.addEventListener('toggle', reservePanelSpace); }
+  // 세부 설정을 액션 패널(우측 하단) 맨 위로 이동
+  const advEl = $('detail-settings'), mainEl = $('main-settings');
+  if (advEl) $('action-panel').insertBefore(advEl, $('action-panel').firstElementChild);
+  // 주설정 ↔ 세부설정 아코디언: 한 번에 하나만 펼침 + 펼침/접힘마다 높이 재분배
+  if (mainEl && advEl) {
+    mainEl.addEventListener('toggle', () => { if (mainEl.open) advEl.open = false; reservePanelSpace(); });
+    advEl.addEventListener('toggle',  () => { if (advEl.open) mainEl.open = false; reservePanelSpace(); });
+  }
   reservePanelSpace();
   let saved = '';
   try { saved = localStorage.getItem('cmr_token') || ''; } catch (_) {}
